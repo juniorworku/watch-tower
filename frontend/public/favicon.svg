@@ -1,1 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#0f172a"/><path d="M16 5l6 6h-3v14h-6V11h-3z" fill="#38bdf8"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>Watch Tower</title>
+  <rect width="32" height="32" rx="8" fill="#4f46e5"/>
+  <path d="M16 5 26 14H6Z" fill="#fff"/>
+  <path d="M10 14h12v11h3v3H7v-3h3Z" fill="#fff"/>
+  <path d="M14 17h4v6h-4Z" fill="#4f46e5"/>
+</svg>

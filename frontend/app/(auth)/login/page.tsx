@@ -9,7 +9,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <main className="min-h-screen grid place-items-center p-6">
       <form method="post" action="/api/login" className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white/60 p-8 shadow-xl">
         <div className="mb-6 flex items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-600/15 text-indigo-600 text-xl">▲</span>
+          <img src="/favicon.svg?v=2" alt="" width={40} height={40} className="h-10 w-10 shrink-0" />
           <div>
             <h1 className="text-lg font-semibold text-slate-900">Watch Tower</h1>
             <p className="text-xs text-slate-500">Junior&apos;s bot shop · private</p>

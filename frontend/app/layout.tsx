@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: { default: "Watch Tower", template: "%s · Watch Tower" },
   description: "Junior Worku's AI agent/bot shop dashboard",
   robots: { index: false, follow: false },
-  icons: { icon: "/favicon.svg" },
+  icons: { icon: "/favicon.svg?v=2" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

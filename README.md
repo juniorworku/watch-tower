@@ -18,6 +18,137 @@ messages, monitoring, vault pages, and read-only integrations are retained.
 FastAPI is the sole owner of authentication, credentials, workflow decisions,
 persistence, and provider access. Next.js calls it over HTTP.
 
+## Docker deployment with PostgreSQL
+
+Docker Compose runs Next.js, FastAPI, and PostgreSQL 17. The database has a named
+volume; it is not exposed on a host port. The UI defaults to
+<http://localhost:3002> and the API to <http://127.0.0.1:8001/docs>, avoiding the
+existing development servers.
+
+### Everyday commands
+
+For an already configured installation, start with:
+
+```bash
+docker compose up
+```
+
+This runs in the foreground and shows logs. To rebuild and run in the background:
+
+```bash
+docker compose up -d --build
+```
+
+To start in the background without rebuilding:
+
+```bash
+docker compose up -d
+```
+
+Open <http://localhost:3002> and use your configured dashboard password.
+Check service health with `docker compose ps`.
+
+### First-time setup only
+
+Skip this section when `backend/.env.docker` and `backend/.env.postgres` already
+exist. Existing installations do not need to run setup or migration again.
+
+Requirements: Docker Engine with Docker Compose v2+, and Python 3.12+ for the
+one-time setup helper. Run commands from the repository root. If you do not yet
+have a Python environment:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r backend/requirements.lock
+```
+
+For a fresh checkout without backend credentials, copy
+`backend/.env.example` to `backend/.env` and set a dashboard password there.
+Keep existing environment files when upgrading.
+
+For first-time setup, configure your dashboard credentials in `backend/.env`
+(or keep your existing root/local settings), then run:
+
+```bash
+.venv/bin/python tools/prepare-docker.py
+docker compose up -d --build
+```
+
+The setup command generates private, ignored `backend/.env.docker` and
+`backend/.env.postgres` files. It copies effective application settings and generates
+a PostgreSQL password, without changing the original env files. It refuses to
+replace existing Docker credentials. Edit these generated files to change Docker
+settings. Do not regenerate the database password after initializing its volume.
+The frontend receives only the internal `BACKEND_URL`; secrets and local databases
+are excluded from image build contexts. If your root `.env` contains a password
+hash or another value with `$`, single-quote that whole value so Compose keeps it
+literal.
+
+### One-time SQLite migration
+
+Skip this section if your data is already in PostgreSQL.
+To migrate an existing SQLite installation, import **before starting the backend**
+instead of using the first-time `up` command above:
+
+```bash
+# Export preserves the original SQLite database. Choose a new export filename.
+.venv/bin/python -m backend.app.cli --database data/watchtower.sqlite3 export-state exports/docker-migration.json
+docker compose build
+docker compose up -d --wait db
+docker compose run --rm --no-deps -v "$PWD/exports:/import:ro" backend python -m backend.app.cli import-state /import/docker-migration.json
+docker compose up -d --wait
+```
+
+Use `backend/data/watchtower.sqlite3` instead when that is your existing database.
+Import refuses to overwrite a nonempty target. Docker starts with an empty database
+until imported or populated through the UI. `DATABASE_URL` selects PostgreSQL;
+without it, local development retains SQLite compatibility. The adapters preserve
+the same records and transactional behavior.
+
+### Logs and stopping
+
+```bash
+docker compose ps
+docker compose logs --tail 100 backend frontend db
+docker compose stop    # preserves database volume
+docker compose up -d
+```
+
+### PostgreSQL backup
+
+Database backup (run from the repo root; exports contain private data):
+
+```bash
+mkdir -p exports
+(umask 077; docker compose exec -T db pg_dump -U watchtower -d watchtower -Fc > exports/watchtower.dump)
+```
+
+Keep the named PostgreSQL volume; `docker compose down -v` deletes it. To change
+ports, set `WATCHTOWER_FRONTEND_PORT` / `WATCHTOWER_BACKEND_PORT` in your shell and
+align `PUBLIC_APP_URL` in `backend/.env.docker`. Use HTTPS and
+`COOKIE_SECURE=1` for production behind a reverse proxy.
+
+### If a one-time command reports existing data
+
+- **Docker environment files already exist:** setup is complete; keep those files
+  and use `docker compose up`.
+- **Export file already exists:** keep the existing backup, or choose a new filename
+  if you intentionally need another export.
+- **Database contains records:** the target is populated. For an already migrated
+  installation, skip import and start normally. Do not use `--replace` merely to
+  bypass this protection.
+
+### Deployment notes
+
+This is no longer a frontend-only Vercel deployment. You can host Next.js separately,
+but FastAPI needs its own Python service and durable database storage. The frontend
+proxy avoids a browser cross-origin cookie/CORS setup. Backend authorization applies
+even when callers connect to FastAPI directly.
+
+Agent execution still requires configuring the downloaded runner's local commands.
+Recurring jobs still require connected agent heartbeats or an authenticated cron
+worker. The worker now lives at `backend/runtime/run-automation.mjs`.
+
 ## Local development
 
 Requirements: Python 3.12+, Node.js 22.12+, npm.
@@ -37,7 +168,7 @@ cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env.local
 ```
 
-Existing root `.env` and `.env.local` files are unchanged and can supply backend
+Existing root `.env` and `.env.local` files can supply backend
 settings during migration. Backend `.env`/`.env.local` override those files, and
 process environment variables override files. Do not overwrite existing credentials
 with example values. `WATCHTOWER_ENV_FILES=0` disables dotenv loading for deployments
@@ -60,7 +191,7 @@ Interactive backend API docs: <http://127.0.0.1:8000/docs>.
 `http://127.0.0.1:8000`. `PUBLIC_APP_URL` belongs to the backend and is the URL used
 in generated runtime files. Keep it aligned with the public frontend URL.
 
-## Existing data migration
+## Legacy Blob migration
 
 Outside Docker, local development uses SQLite at `backend/data/watchtower.sqlite3`, configurable via
 `WATCHTOWER_DATABASE`. It does not automatically read or change live Blob data.
@@ -74,7 +205,7 @@ the new API** to avoid seeding the destination with snapshot records.
 # Read-only remote export; private local file, refuses to overwrite an existing file.
 node --env-file=.env --env-file=.env.local tools/export-blob.mjs exports/state.json
 
-# Import into SQLite; preserves IDs, task history, messages, and scoped key hashes.
+# Import into the configured database; preserves IDs, history, and key hashes.
 .venv/bin/python -m backend.app.cli import-state exports/state.json
 ```
 
@@ -107,91 +238,7 @@ The backend tests use temporary SQLite databases and test credentials. The stack
 smoke script checks authentication, cookie forwarding, server rendering, task
 creation, and agent pickup over real HTTP; it shuts both processes down afterwards.
 
-## Docker deployment with PostgreSQL
-
-Docker Compose runs Next.js, FastAPI, and PostgreSQL 17. The database has a named
-volume; it is not exposed on a host port. The UI defaults to
-<http://localhost:3002> and the API to <http://127.0.0.1:8001/docs>, avoiding the
-existing development servers.
-
-For an already configured installation, start normally with:
-
-```bash
-docker compose up
-```
-
-This runs in the foreground and shows logs. To rebuild and run in the background:
-
-```bash
-docker compose up -d --build
-```
-
-Setup and migration below are **one-time steps**; skip them when your Docker
-credentials and migrated PostgreSQL database already exist.
-
-For first-time setup, configure your dashboard credentials in `backend/.env`
-(or keep your existing root/local settings), then run:
-
-```bash
-.venv/bin/python tools/prepare-docker.py
-docker compose up -d --build --wait
-```
-
-The setup command generates private, ignored `backend/.env.docker` and
-`backend/.env.postgres` files. It copies effective application settings and generates
-a PostgreSQL password, without changing the original env files. It refuses to
-replace existing Docker credentials. Edit these generated files to change Docker
-settings. Do not regenerate the database password after initializing its volume.
-The frontend receives only the internal `BACKEND_URL`; secrets and local databases
-are excluded from image build contexts. If your root `.env` contains a password
-hash or another value with `$`, single-quote that whole value so Compose keeps it
-literal. Existing local hash quoting has been corrected without changing credentials.
-
-To migrate an existing SQLite installation, import **before starting the backend**
-instead of using the first-time `up` command above:
-
-```bash
-# Export preserves the original SQLite database. Choose a new export filename.
-.venv/bin/python -m backend.app.cli --database data/watchtower.sqlite3 export-state exports/docker-migration.json
-docker compose build
-docker compose up -d --wait db
-docker compose run --rm --no-deps -v "$PWD/exports:/import:ro" backend python -m backend.app.cli import-state /import/docker-migration.json
-docker compose up -d --wait
-```
-
-Use `backend/data/watchtower.sqlite3` instead when that is your existing database.
-Import refuses to overwrite a nonempty target. Docker starts with an empty database
-until imported or populated through the UI. `DATABASE_URL` selects PostgreSQL;
-without it, local development retains SQLite compatibility. The adapters preserve
-the same records and transactional behavior.
-
-```bash
-docker compose ps
-docker compose logs --tail 100 backend frontend db
-docker compose stop    # preserves database volume
-docker compose up -d --wait
-```
-
-Database backup (run from the repo root; exports contain private data):
-
-```bash
-mkdir -p exports
-(umask 077; docker compose exec -T db pg_dump -U watchtower -d watchtower -Fc > exports/watchtower.dump)
-```
-
-Keep the named PostgreSQL volume; `docker compose down -v` deletes it. To change
-ports, set `WATCHTOWER_FRONTEND_PORT` / `WATCHTOWER_BACKEND_PORT` in your shell and
-align `PUBLIC_APP_URL` in `backend/.env.docker`. Use HTTPS and
-`COOKIE_SECURE=1` for production behind a reverse proxy.
-
-This is no longer a frontend-only Vercel deployment. You can host Next.js separately,
-but FastAPI needs its own Python service and durable database storage. The frontend
-proxy avoids a browser cross-origin cookie/CORS setup. Backend authorization applies
-even when callers connect to FastAPI directly.
-
-Agent execution still requires configuring the downloaded runner's local commands.
-Recurring jobs still require connected agent heartbeats or an authenticated cron
-worker. The worker now lives at `backend/runtime/run-automation.mjs`.
+## More documentation
 
 - [Architecture and API ownership](docs/ARCHITECTURE.md)
 - [Migration progress and validation](docs/MIGRATION_PROGRESS.md)
