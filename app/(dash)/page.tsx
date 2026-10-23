@@ -13,7 +13,7 @@ export default async function Overview() {
   const active = store.tasks.filter(t => t.status === "doing");
   const blocked = store.tasks.filter(t => t.status === "blocked");
   const review = store.tasks.filter(t => t.status === "review");
-  return <><LiveRefresh /><PageHeader title="Mission control" subtitle={`${formatDate(todayInTz())} · Your team’s work, at a glance.`}><Link href="/tasks#new-task" className="primary-button">＋ New task</Link></PageHeader>
+  return <><LiveRefresh /><PageHeader title="Mission control" subtitle={`${formatDate(todayInTz())} · Your team’s work, at a glance.`}><Link href="/tasks?create=1#new-task" className="primary-button">＋ New task</Link></PageHeader>
     <div className="mb-8 grid grid-cols-2 gap-4 xl:grid-cols-4">{[
       { label: "Agents online", value: online, detail: `${store.agents.length} agents in your team`, href: "/bots", color: "text-emerald-600" },
       { label: "In progress", value: active.length, detail: "Tasks being worked on", href: "/tasks?status=doing", color: "text-indigo-600" },

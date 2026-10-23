@@ -1,11 +1,11 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-export function TaskAssignment({ id, assigneeId, agents }: { id: string; assigneeId?: string | null; agents: { id: string; name: string }[] }) {
+export function TaskAssignment({ id, assigneeId, agents, locked = false }: { id: string; assigneeId?: string | null; agents: { id: string; name: string }[]; locked?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  return <div className="mt-3 text-xs"><label>Assigned bot<select aria-label="Assigned bot" value={assigneeId || ""} disabled={busy} className="ml-2 rounded border border-slate-200 bg-white p-1" onChange={async e => {
+  return <div className="mt-3 text-xs"><label>Assigned bot<select aria-label="Assigned bot" value={assigneeId || ""} disabled={busy || locked} className="mt-2 block w-full min-w-0 rounded-lg border border-slate-200 bg-white p-2 text-sm" onChange={async e => {
     const value = e.target.value;
     setBusy(true); setError("");
     try {

@@ -8,5 +8,6 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const store = await loadStore();
   const agent = store.agents.find(a => a.id === id);
   if (!agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
-  return NextResponse.json({ instructions: agent.instructions || "", heartbeatIntervalMinutes: agent.heartbeatIntervalMinutes || 15, tasks: store.tasks.filter(t => t.assigneeId === id) });
+  const taskIds = new Set(store.tasks.filter(t => t.assigneeId === id).map(t => t.id));
+  return NextResponse.json({ activities: store.activities.filter(a => a.taskId && taskIds.has(a.taskId)).slice(0, 100), instructions: agent.instructions || "", heartbeatIntervalMinutes: agent.heartbeatIntervalMinutes || 15, tasks: store.tasks.filter(t => t.assigneeId === id) });
 }

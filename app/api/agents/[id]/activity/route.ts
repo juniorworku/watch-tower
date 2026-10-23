@@ -32,7 +32,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       if (task) {
         if (task.status === "review" && !["heartbeat", "activity", "status"].includes(kind)) throw new LifecycleError("task is awaiting operator review", 409);
         if (kind === "completed" || kind === "submitted") submitDeliverable(task, id, body.deliverable || {}, now);
-        if (kind === "rejected") assignTask(s, task, null, now, message);
+        if (kind === "rejected") assignTask(s, task, null, now, message, "agent");
         else if (states[kind]) setTaskStatus(task, states[kind], now);
         if (kind !== "rejected" && body.currentRunId) task.currentRunId = String(body.currentRunId);
         task.updatedAt = now;

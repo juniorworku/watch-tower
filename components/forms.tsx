@@ -14,30 +14,35 @@ export function TaskCreateForm({ owners, projects, agents = [] }: { owners: stri
     setErr("");
     const form = e.currentTarget;
     const fd = new FormData(form);
-    const res = await fetch("/api/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        assigneeId: fd.get("assigneeId"),
-        title: fd.get("title"),
-        priority: fd.get("priority"),
-        owner: fd.get("owner"),
-        project: fd.get("project"),
-        due: fd.get("due"),
-        body: fd.get("body"),
-      }),
-    });
-    setBusy(false);
-    if (!res.ok) {
-      setErr((await res.json().catch(() => ({}))).error || "Failed");
-      return;
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assigneeId: fd.get("assigneeId"),
+          title: fd.get("title"),
+          priority: fd.get("priority"),
+          owner: fd.get("owner"),
+          project: fd.get("project"),
+          due: fd.get("due"),
+          body: fd.get("body"),
+        }),
+      });
+      if (!res.ok) {
+        setErr((await res.json().catch(() => ({}))).error || "Failed");
+        return;
+      }
+      form.reset();
+      router.refresh();
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "Could not save. Please try again.");
+    } finally {
+      setBusy(false);
     }
-    form.reset();
-    router.refresh();
   }
   return (
     <form id="task-create-form" onSubmit={onSubmit} className="grid gap-3 md:grid-cols-3">
-      <input name="title" required placeholder="New task title" className="md:col-span-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+      <input name="title" required aria-label="Task title" placeholder="New task title" className="md:col-span-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
       <select aria-label="Task priority" name="priority" defaultValue="normal" className="field">
         <option value="low">Low priority</option><option value="normal">Normal priority</option><option value="high">High priority</option><option value="urgent">Urgent priority</option>
       </select>
@@ -47,7 +52,7 @@ export function TaskCreateForm({ owners, projects, agents = [] }: { owners: stri
       <datalist id="projects">{projects.map((p) => <option key={p} value={p} />)}</datalist>
       <input name="due" type="date" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
       <select aria-label="Assign new task to bot" name="assigneeId" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"><option value="">Unassigned</option>{agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
-      <input name="body" placeholder="Notes (optional)" className="md:col-span-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+      <input name="body" aria-label="Task description" placeholder="Description and expected outcome" className="md:col-span-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
       <button disabled={busy} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{busy ? "…" : "Add task"}</button>
       {err && <p className="md:col-span-3 text-sm text-rose-700">{err}</p>}
     </form>
@@ -149,18 +154,23 @@ export function AgentRegistryForm({ parents }: { parents: { id: string; name: st
     setErr("");
     const form = e.currentTarget;
     const fd = new FormData(form);
-    const res = await fetch("/api/registry", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(Object.fromEntries(fd.entries())),
-    });
-    setBusy(false);
-    if (!res.ok) {
-      setErr((await res.json().catch(() => ({}))).error || "Failed");
-      return;
+    try {
+      const res = await fetch("/api/registry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.fromEntries(fd.entries())),
+      });
+      if (!res.ok) {
+        setErr((await res.json().catch(() => ({}))).error || "Failed");
+        return;
+      }
+      form.reset();
+      router.refresh();
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "Could not save. Please try again.");
+    } finally {
+      setBusy(false);
     }
-    form.reset();
-    router.refresh();
   }
   return (
     <form onSubmit={onSubmit} className="mb-6 grid gap-2 rounded-2xl border border-slate-200 bg-white/40 p-4 md:grid-cols-3">

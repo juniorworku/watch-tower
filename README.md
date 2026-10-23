@@ -111,35 +111,73 @@ npm run build && npm start
 ## Deploy (Vercel)
 Project: `watch-tower-dashboard`, framework Next.js. Connect a Blob store (sets `BLOB_READ_WRITE_TOKEN`). Set `DASHBOARD_PASSWORD_HASH` and `WATCHTOWER_API_KEY` for Preview and Production.
 
-### Task assignment and bot reporting
+### Agent operations and review workflow
 
-Use **Tasks** to assign/reassign one bot per task, filter by bot/owner/project/status,
-open task details, and review assignment history and task activity. Assignments reset
-the task to `todo` and clear its run ID. Existing `owners` remain human ownership
-labels; existing tasks without an assignee remain unassigned. Remove an agent only
-after unassigning/reassigning its tasks. Bot names link to workload and activity pages.
-These pages refresh every 30 seconds while visible.
+The light workspace includes mission control, a searchable agent grid, a task board,
+and task details with a progress thread, deliverables, and assignment history. Agent
+profiles contain overview, tasks, activity, settings, and connection setup tabs.
+The operational pages refresh every 30 seconds while visible.
+
+Tasks move through Inbox (`todo`), Assigned (`assigned`), In progress (`doing`),
+Blocked (`blocked`), Review (`review`), and Done (`done`). Assigning or reassigning
+resets work to Assigned and clears its run ID; unassigning returns work to Inbox.
+Existing human `owners` labels and older tasks remain compatible. Remove an agent
+only after unassigning/reassigning its tasks.
 
 Bots use `Authorization: Bearer <WATCHTOWER_API_KEY>` for:
 
-- `GET /api/agents/{id}/tasks`: discover their assigned tasks.
-- `POST /api/agents/{id}/activity`: report `{ "taskId": "task-id", "kind": "started", "message": "Starting analysis", "currentRunId": "optional-run-id" }`.
+- `GET /api/agents/{id}/tasks`: assigned tasks, agent instructions, expected heartbeat interval, and recent task activity (including operator comments).
+- `POST /api/agents/{id}/activity`: heartbeat, progress, and task lifecycle reports.
 
-Task events: `accepted` (queued), `started` (doing), `progress` (no status change),
-`blocked`, `completed` (done), `failed` (blocked), and `rejected` (unassigns and queues).
-Task events require a task ID and message. Reports for another agent's task return
-409. Completed tasks must be reopened on the board. Assignments/reassignments are
-managed by the dashboard and recorded automatically. General `heartbeat`, `activity`,
-and `status` reports remain supported. The API key is shared across registered agents;
-it is not a separate credential per bot.
+Task event kinds: `accepted` (Assigned), `started` (In progress), `progress` (no status
+change), `blocked`, `failed` (Blocked), `rejected` (unassigns), and `submitted`.
+General `heartbeat`, `activity`, and `status` events remain supported.
+Task events require `taskId` and `message`. Example submission:
 
-Last seen is the newer of heartbeat and activity. Online means seen within ten
-minutes; workload is blocked if any assigned task is blocked, working if any is doing,
-and idle otherwise. Stale agents show offline even if work is still assigned.
-Completion rate covers currently assigned tasks, not lifetime throughput.
+```json
+{
+  "taskId": "task-id",
+  "kind": "submitted",
+  "message": "Analysis ready for review",
+  "deliverable": {
+    "title": "Research findings",
+    "content": "The work completed, evidence, and conclusions.",
+    "url": "https://example.com/optional-artifact"
+  }
+}
+```
 
-Assignment does not launch a bot or call its webhook: the bot must poll for tasks
-and report progress. Blob persistence retains the existing per-process mutation
-queue; simultaneous writes from separate server instances are not transactional.
+`deliverable.title` and `deliverable.content` are required; its URL is optional and
+must use HTTP(S). `completed` is an alias for `submitted` and also requires a
+deliverable. Submission moves work to Review; bots cannot directly mark it Done.
+Review the submitted work on the task page: approve to finish, or request changes
+with mandatory feedback to return it to In progress. Revisions and prior feedback
+remain on the task. Pending review prevents reassignment or status bypasses.
+Reports for tasks assigned to another agent return 409. Completed tasks must be
+reopened on the dashboard before further bot work.
 
-Run lifecycle checks with `node --test tests/lifecycle.cjs` and `npm run typecheck`.
+Dashboard task updates use `PATCH /api/tasks`. Review/comment payloads contain
+`id`, `action` (`approve`, `request_changes`, or `comment`), and `message`.
+The dashboard session protects these routes; bots use only the agent routes.
+
+Set each agent's instructions and heartbeat interval (1–1440 minutes) under its
+Settings tab. Polling returns these settings for the runtime to follow. Last seen
+is the newer of heartbeat and activity; offline means more than two expected
+intervals without a report (default: 15-minute interval, 30-minute grace window).
+Workload is blocked if any task is blocked, working if any is doing, and idle
+otherwise. Offline agents retain their assigned work. Completion rate covers
+currently assigned tasks, not lifetime throughput.
+
+Assignment does not launch a bot or call its webhook. The runtime must poll,
+execute, and report. Connection setup verifies recent reporting; it does not
+provision a runtime or generate separate bot credentials. The API key is currently
+shared across registered agents. Direct agent chat and automatic unassigned-task
+claiming are not part of this workflow.
+
+Blob persistence retains the existing per-process mutation queue; simultaneous
+writes from separate server instances are not transactional. A transactional data
+store is needed before adding concurrent automatic task claiming.
+
+Run `npm test` for lifecycle and in-memory API contract tests, and
+`npm run typecheck` for TypeScript validation. API tests cover bot ownership,
+authentication, submission, revision, approval, comments, and review bypass guards.

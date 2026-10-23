@@ -10,7 +10,7 @@ export function setTaskStatus(task: TaskItem, status: TaskStatus, now: string) {
   task.updatedAt = now;
 }
 
-export function assignTask(store: StoreData, task: TaskItem, assigneeId: string | null, now: string, reason = "Dashboard assignment") {
+export function assignTask(store: StoreData, task: TaskItem, assigneeId: string | null, now: string, reason = "Dashboard assignment", actor: "operator" | "agent" = "operator") {
   const agent = assigneeId ? store.agents.find(a => a.id === assigneeId) : null;
   if (assigneeId && !agent) throw new LifecycleError("assignee not found");
   const previous = task.assigneeId || null;
@@ -20,7 +20,7 @@ export function assignTask(store: StoreData, task: TaskItem, assigneeId: string 
   task.currentRunId = null;
   (task.assignmentHistory ||= []).push({ fromId: previous, toId: assigneeId, at: now, reason });
   setTaskStatus(task, assigneeId ? "assigned" : "todo", now);
-  store.activities.unshift({ id: `act-${crypto.randomUUID()}`, agentId: assigneeId || previous!, taskId: task.id,
+  store.activities.unshift({ id: `act-${crypto.randomUUID()}`, agentId: assigneeId || previous!, taskId: task.id, actor,
     kind: previous ? "re-assigned" : "assigned", message: `${reason}: ${agent?.name || "unassigned"}`, at: now });
 }
 

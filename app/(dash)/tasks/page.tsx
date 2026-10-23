@@ -12,10 +12,11 @@ export const dynamic = "force-dynamic";
 
 const LABEL = TASK_LABELS;
 
-export default async function TasksPage({ searchParams }: { searchParams: Promise<{ owner?: string; project?: string; agent?: string; status?: string }> }) {
+export default async function TasksPage({ searchParams }: { searchParams: Promise<{ owner?: string; project?: string; agent?: string; status?: string; create?: string }> }) {
   const sp = await searchParams;
   const store = await getStore();
-  const all = store.tasks;
+  const rank = { urgent: 0, high: 1, normal: 2, low: 3 };
+  const all = [...store.tasks].sort((a, b) => rank[a.priority || "normal"] - rank[b.priority || "normal"]);
   const owners = [...new Set(all.flatMap((t) => t.owners).filter(Boolean))].sort();
   const projects = [...new Set(all.map((t) => t.project).filter(Boolean))].sort();
   const filtered = all.filter((t) => (!sp.agent || (sp.agent === "unassigned" ? !t.assigneeId : t.assigneeId === sp.agent)) && (!sp.status || t.status === sp.status) && (!sp.owner || t.owners.includes(sp.owner)) && (!sp.project || t.project === sp.project));
@@ -48,9 +49,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         </form>
       </PageHeader>
 
-      <details id="new-task" className="mb-6 rounded-2xl border border-slate-200 bg-white p-5"><summary className="cursor-pointer text-sm font-semibold text-indigo-600">＋ Create a task</summary><div className="mt-4"><TaskCreateForm owners={owners} projects={projects} agents={store.agents} /></div></details>
+      <details open={sp.create === "1"} id="new-task" className="mb-6 rounded-2xl border border-slate-200 bg-white p-5"><summary className="cursor-pointer text-sm font-semibold text-indigo-600">＋ Create a task</summary><div className="mt-4"><TaskCreateForm owners={owners} projects={projects} agents={store.agents} /></div></details>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <div className="overflow-x-auto pb-4"><div className="grid grid-cols-1 gap-4 md:min-w-[1680px] md:grid-cols-6">
         {TASK_STATUSES.map((s) => {
           const col = filtered.filter((t) => t.status === s);
           return (
@@ -74,7 +75,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                         {t.project && <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-violet-700">{t.project}</span>}
                         {t.due && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-700">due {formatDate(t.due)}</span>}
                       </div>
-                      <TaskAssignment id={t.id} assigneeId={t.assigneeId} agents={store.agents} />
+                      <TaskAssignment id={t.id} assigneeId={t.assigneeId} agents={store.agents} locked={t.status === "review"} />
                       <div className="mt-3 flex items-center justify-between"><Badge tone={t.priority === "urgent" || t.priority === "high" ? "amber" : "slate"}>{t.priority || "normal"}</Badge><Link href={`/tasks/${t.id}`} className="text-xs font-medium text-indigo-600">{t.status === "review" ? "Review output →" : "Open task →"}</Link></div>
                     </div>
                   );
@@ -83,6 +84,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             </div>
           );
         })}
+      </div>
       </div>
       {filtered.length === 0 && <div className="mt-4"><Empty>No tasks match this filter.</Empty></div>}
     </>

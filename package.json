@@ -8,7 +8,8 @@
     "prebuild": "node scripts/snapshot-vault.mjs",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node tests/lifecycle.cjs && node tests/task-api.cjs"
   },
   "dependencies": {
     "@vercel/blob": "^2.8.2",
