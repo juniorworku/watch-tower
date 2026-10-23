@@ -1,0 +1,18 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { getStore } from "@/lib/data/store";
+import { projectFor } from "@/lib/data/workflows";
+import { LiveRefresh } from "@/components/live-refresh";
+import { Badge, Card, Empty, PageHeader } from "@/components/ui";
+import { WorkflowForm, ActionButton } from "@/components/workflow-controls";
+import { TASK_LABELS } from "@/lib/data/types";
+export const dynamic = "force-dynamic";
+export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params; const store = await getStore(); const project = store.projects.find(p => p.id === id); if (!project) notFound();
+  const tasks = store.tasks.filter(t => projectFor(store, t)?.id === id);
+  return <><LiveRefresh /><Link className="mb-4 inline-block text-sm text-indigo-600" href="/projects">← Projects</Link><PageHeader title={project.name} subtitle={`${project.memberIds?.length || 0} team members · ${tasks.length} tasks`}><Link className="primary-button" href={`/tasks?project=${encodeURIComponent(project.name)}`}>Project board →</Link></PageHeader>
+    <div className="grid items-start gap-6 xl:grid-cols-3"><div className="space-y-6 xl:col-span-2"><Card title="Shared project docs"><p className="whitespace-pre-wrap text-sm leading-7 text-slate-600">{project.body || "Add shared instructions in project settings. Agents receive these docs when polling for work."}</p></Card><Card title="Project tasks">{!tasks.length && <Empty>No tasks yet.</Empty>}<div className="divide-y divide-slate-100">{tasks.map(t => <Link key={t.id} href={`/tasks/${t.id}`} className="flex justify-between gap-3 py-3 text-sm"><span>{t.title}<span className="mt-1 block text-xs text-slate-500">{t.assigneeName || "Unassigned"}</span></span><Badge>{TASK_LABELS[t.status]}</Badge></Link>)}</div></Card><Card title="Shared deliverables">{tasks.flatMap(t => (t.deliverables || []).map(d => <Link key={d.id} href={`/tasks/${t.id}`} className="mb-3 block rounded-xl border border-slate-100 p-4"><p className="text-sm font-semibold">{d.title}</p><p className="mt-1 line-clamp-3 text-sm text-slate-500">{d.content}</p><p className="mt-2 text-xs text-indigo-600">{d.review.replaceAll("_", " ")} · Open task →</p></Link>))}{!tasks.some(t => t.deliverables?.length) && <Empty>Submitted work is shared with this project’s team.</Empty>}</Card></div>
+    <div className="space-y-6"><Card title="Team">{(project.memberIds || []).map(id => <Link href={`/bots/${id}`} key={id} className="mb-3 flex justify-between text-sm"><span>{store.agents.find(a => a.id === id)?.name || id}</span><Badge tone={project.leadAgentId === id ? "violet" : "slate"}>{project.leadAgentId === id ? "Lead" : "Member"}</Badge></Link>)}<p className="mt-3 text-xs text-slate-400">The lead can review teammates’ work and delegate subtasks. Self-review is disabled.</p></Card>
+    <Card title="Project settings"><WorkflowForm url="/api/projects" method="PATCH" payload={{ id }} label="Save project" fields={[{ name: "name", label: "Project name", value: project.name, required: true }, { name: "body", label: "Shared docs", type: "textarea", value: project.body }, { name: "memberIds", label: "Members", type: "multi", value: project.memberIds || [], options: store.agents.map(a => ({ value: a.id, label: a.name })) }, { name: "leadAgentId", label: "Lead agent", type: "select", value: project.leadAgentId || "", options: [{ value: "", label: "No lead" }, ...store.agents.map(a => ({ value: a.id, label: a.name }))] }]} /><div className="mt-4"><ActionButton method="PATCH" url="/api/projects" payload={{ id, archived: !project.archived }} label={project.archived ? "Restore project" : "Archive project"} /></div></Card></div></div>
+  </>;
+}

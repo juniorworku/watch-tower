@@ -9,7 +9,8 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/lifecycle.cjs && node tests/task-api.cjs"
+    "test": "node tests/lifecycle.cjs && node tests/task-api.cjs && node tests/workflows.cjs && node tests/storage.cjs && node tests/operations-api.cjs && node tests/agent-auth.cjs && node tests/monitoring.cjs && node tests/pages.cjs",
+    "automation": "node scripts/run-automation.mjs"
   },
   "dependencies": {
     "@vercel/blob": "^2.8.2",

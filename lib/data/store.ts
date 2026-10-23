@@ -1,91 +1,75 @@
 import "server-only";
-import { put, head, list } from "@vercel/blob";
+import { put, get, list, BlobPreconditionFailedError } from "@vercel/blob";
 import { cache } from "react";
 import { buildSeedStore } from "./seed";
 import type { StoreData } from "./types";
 
+const STATE = "watchtower/state.json";
 const PREFIX = "watchtower/data/";
-
-function token(): string {
-  const t = process.env.BLOB_READ_WRITE_TOKEN;
-  if (!t) throw new Error("BLOB_READ_WRITE_TOKEN is not set");
-  return t;
+function token() {
+  const value = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!value) throw new Error("BLOB_READ_WRITE_TOKEN is not set");
+  return value;
 }
-
-async function readPath(pathname: string): Promise<StoreData | null> {
-  try {
-    const meta = await head(pathname, { token: token() });
-    const res = await fetch(meta.downloadUrl, {
-      headers: { Authorization: `Bearer ${token()}` },
-      cache: "no-store",
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as StoreData;
-    if (!data || data.version !== 1) return null;
-    return data;
-  } catch {
-    return null;
-  }
+async function read(path: string) {
+  const result = await get(path, { access: "private", token: token(), useCache: false });
+  if (!result) return null;
+  if (result.statusCode !== 200) throw new Error("Unexpected storage response");
+  const data = await new Response(result.stream).json() as StoreData;
+  if (data?.version !== 1 || !Array.isArray(data.tasks) || !Array.isArray(data.agents)) throw new Error("Invalid stored data; refusing to replace it");
+  return { data, etag: result.blob.etag };
 }
-
-async function latestPath(): Promise<string | null> {
-  const listed = await list({ prefix: PREFIX, token: token() });
-  if (!listed.blobs.length) return null;
-  listed.blobs.sort((a, b) => +new Date(b.uploadedAt) - +new Date(a.uploadedAt) || b.pathname.localeCompare(a.pathname));
-  return listed.blobs[0].pathname;
-}
-
-export async function saveStore(data: StoreData): Promise<void> {
+async function write(data: StoreData, etag?: string) {
   data.updatedAt = new Date().toISOString();
-  const pathname = `${PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`;
-  await put(pathname, JSON.stringify(data), {
-    access: "private",
-    token: token(),
-    addRandomSuffix: false,
-    contentType: "application/json",
-    cacheControlMaxAge: 0,
+  return put(STATE, JSON.stringify(data), {
+    access: "private", token: token(), addRandomSuffix: false,
+    contentType: "application/json", cacheControlMaxAge: 60,
+    // A missing ETag means create only; never overwrite an unknown revision.
+    ...(etag ? { ifMatch: etag } : { allowOverwrite: false }),
   });
 }
-
-export async function loadStore(): Promise<StoreData> {
-  try {
-    const path = await latestPath();
-    if (path) {
-      const data = await readPath(path);
-      if (data) return data;
+async function revision() {
+  const current = await read(STATE);
+  if (current) return current;
+  const snapshots = await list({ prefix: PREFIX, token: token() });
+  if (snapshots.hasMore) {
+    let cursor = snapshots.cursor;
+    while (cursor) {
+      const page = await list({ prefix: PREFIX, token: token(), cursor });
+      snapshots.blobs.push(...page.blobs);
+      cursor = page.hasMore ? page.cursor : undefined;
     }
-  } catch {
-    /* seed */
   }
-  const legacy = await readPath("watchtower/store.json");
-  if (legacy) {
-    await saveStore(legacy);
-    return legacy;
+  snapshots.blobs.sort((a, b) => +new Date(b.uploadedAt) - +new Date(a.uploadedAt) || b.pathname.localeCompare(a.pathname));
+  const legacy = snapshots.blobs.length ? await read(snapshots.blobs[0].pathname) : await read("watchtower/store.json");
+  const data = legacy?.data || buildSeedStore();
+  // Preserve explicit legacy assignments when initializing project teams.
+  for (const p of data.projects) {
+    if (!p.memberIds) p.memberIds = [...new Set(data.tasks.filter(t => (t.projectId === p.id || (!t.projectId && t.project.toLowerCase() === p.name.toLowerCase())) && t.assigneeId).map(t => t.assigneeId!))];
   }
-  const seeded = buildSeedStore();
-  await saveStore(seeded);
-  return seeded;
+  for (const t of data.tasks) if (!t.projectId) t.projectId = data.projects.find(p => p.name.toLowerCase() === t.project.toLowerCase())?.id || null;
+  try {
+    const result = await write(data);
+    return { data, etag: result.etag };
+  } catch (error) {
+    // Another instance may have initialized the canonical state first.
+    const winner = await read(STATE);
+    if (winner) return winner;
+    throw error;
+  }
 }
-
+export async function loadStore(): Promise<StoreData> { return (await revision()).data; }
 export const getStore = cache(loadStore);
 
-let chain: Promise<unknown> = Promise.resolve();
-
+// Callbacks must be retry-safe: only change the supplied draft, no external I/O.
 export async function mutateStore(fn: (data: StoreData) => void | Promise<void>): Promise<StoreData> {
-  const run = async () => {
-    const data = structuredClone(await loadStore());
-    await fn(data);
-    await saveStore(data);
-    return data;
-  };
-  const p = chain.then(run, run);
-  chain = p.then(
-    () => undefined,
-    () => undefined,
-  );
-  return p;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const current = await revision();
+    const draft = structuredClone(current.data);
+    await fn(draft);
+    try { await write(draft, current.etag); return draft; }
+    catch (error) { if (!(error instanceof BlobPreconditionFailedError)) throw error; }
+  }
+  throw new Error("Store is busy; retry this request");
 }
-
-export function newId(prefix: string): string {
-  return `${prefix}-${crypto.randomUUID()}`;
-}
+export function newId(prefix: string) { return `${prefix}-${crypto.randomUUID()}`; }

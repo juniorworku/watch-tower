@@ -111,28 +111,89 @@ npm run build && npm start
 ## Deploy (Vercel)
 Project: `watch-tower-dashboard`, framework Next.js. Connect a Blob store (sets `BLOB_READ_WRITE_TOKEN`). Set `DASHBOARD_PASSWORD_HASH` and `WATCHTOWER_API_KEY` for Preview and Production.
 
-### Agent operations and review workflow
+### Agent workforce features
 
-The light workspace includes mission control, a searchable agent grid, a task board,
-and task details with a progress thread, deliverables, and assignment history. Agent
-profiles contain overview, tasks, activity, settings, and connection setup tabs.
-The operational pages refresh every 30 seconds while visible.
+The app now includes these workflows, based on the public AgentCenter feature pages:
 
-Tasks move through Inbox (`todo`), Assigned (`assigned`), In progress (`doing`),
-Blocked (`blocked`), Review (`review`), and Done (`done`). Assigning or reassigning
-resets work to Assigned and clears its run ID; unassigning returns work to Inbox.
-Existing human `owners` labels and older tasks remain compatible. Remove an agent
-only after unassigning/reassigning its tasks.
+| Area | Watch Tower implementation |
+| --- | --- |
+| Agent dashboard | Searchable team, current work, per-agent tasks, submitted deliverables, settings, instructions, personality, and runtime setup |
+| Task orchestration | Inbox/Assigned/In progress/Blocked/Review/Done board, priorities, assignments, subtasks, dependencies, progress threads, deliverable revisions, templates, and recurring work |
+| Monitoring | Expected heartbeat interval, online/offline and workload status, retained heartbeat history and gaps, workload distribution, 14-day completion trends, 7-day activity heatmap, and stalled-work flags |
+| Multi-agent work | Project membership, a lead role, shared project docs and deliverables, cross-agent subtasks, lead delegation, and lead review with feedback |
+| Messaging | Queued instructions, agent acknowledgement, replies, and delivery/answer timestamps |
 
-Bots use `Authorization: Bearer <WATCHTOWER_API_KEY>` for:
+The operational pages refresh every 30 seconds while visible. Monitoring uses EAT
+for chart dates and hours. Stalled work means over 24 hours in progress, blocked,
+or awaiting review; this is a visibility flag, not an automatic cancellation.
 
-- `GET /api/agents/{id}/tasks`: assigned tasks, agent instructions, expected heartbeat interval, and recent task activity (including operator comments).
-- `POST /api/agents/{id}/activity`: heartbeat, progress, and task lifecycle reports.
+#### Project teams and pickup
 
-Task event kinds: `accepted` (Assigned), `started` (In progress), `progress` (no status
-change), `blocked`, `failed` (Blocked), `rejected` (unassigns), and `submitted`.
-General `heartbeat`, `activity`, and `status` events remain supported.
-Task events require `taskId` and `message`. Example submission:
+Create a project under **Projects**, select its members and lead, and add shared
+docs. Agents can belong to multiple projects. Project-bound unassigned tasks are
+claimable only by members; `requiredTags` constrain automatic pickup by capability.
+Explicit assignment can override tags, but must still respect membership. No-project
+tasks are available to any eligible registered agent. Paused/disabled agents do not
+pick up new work. Archived projects do not offer new work.
+
+`POST /api/agents/{id}/tasks` atomically picks up work. An existing in-progress or
+blocked task is returned first. Otherwise assigned work takes precedence, then
+unassigned eligible work is ordered by urgent/high/normal/low priority and age.
+Dependencies and unfinished subtasks prevent pickup. A task moves to In progress
+when claimed. Only one active task is offered to each agent at a time. Rejected work
+returns to Inbox. Bots can send heartbeat `{kind:"heartbeat",message:"Ready",pickup:true}`
+to request pickup during check-in, or call the pickup endpoint explicitly.
+
+Subtasks are independent tasks assigned across agents. Their parent displays
+completion progress and cannot be submitted/approved until they are all Done.
+Cycles and cross-project dependencies are rejected. Add dependencies in task settings.
+
+#### Runtime credentials and setup
+
+On an agent's **Connect** tab, generate a scoped credential. Download either the
+automatic installer or the individual `watchtower-agent.json`, `agent-runner.mjs`,
+`HEARTBEAT.md`, and `PLAYBOOK.md` files. The installer writes them into a new private
+folder; it does not deploy a remote server. The plaintext credential is returned
+only during generation, is never stored in the dashboard data, and is hashed at rest.
+Regeneration invalidates that agent's prior scoped credential. Revoke it from the
+same tab. The existing `WATCHTOWER_API_KEY` remains an administrator credential and
+can access all agent endpoints; scoped credentials cannot edit the registry.
+
+Run on the agent machine with Node.js 20+:
+
+```bash
+node watchtower-setup.mjs
+node agent-runner.mjs watchtower-agent.json
+```
+
+The runner handles heartbeat, context polling, message acknowledgements, and task
+pickup. Connect your agent engine using locally selected executable paths:
+
+- `WATCHTOWER_TASK_COMMAND`: receives JSON `{task,context}` on stdin and prints JSON `{title,content,url?}` for submission.
+- `WATCHTOWER_MESSAGE_COMMAND`: receives `{message,context}` and prints a plain-text reply.
+- `WATCHTOWER_REVIEW_COMMAND` (optional, leads): receives `{task,context}` for a teammate's pending deliverable and prints `{action:"approve"|"request_changes",message}`.
+
+Commands are executed without a shell. The task input cannot select an executable.
+Without a task command the runner monitors and receives instructions but does not
+claim or execute work. Setup does not install an LLM or provision hosting. Files
+containing credentials must stay private. Add runtime config files to your own
+runtime workspace's ignore rules before committing that workspace.
+
+#### Agent API
+
+Every agent endpoint uses `Authorization: Bearer <scoped-token-or-master-key>`:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/agents/{id}/tasks` | Instructions, personality, heartbeat interval, own tasks, member-project docs, shared project tasks/deliverables, recent task activity |
+| `POST /api/agents/{id}/tasks` | Atomic pickup; returns `{task:null}` if no work is eligible |
+| `POST /api/agents/{id}/activity` | Heartbeat, accepted, started, progress, blocked, failed, rejected, or submitted events |
+| `GET /api/agents/{id}/messages` | Pending unanswered messages |
+| `POST /api/agents/{id}/messages` | `{messageId}` acknowledges delivery; `{messageId,reply}` answers |
+| `POST /api/agents/{id}/review` | Project lead reviews another member's work with `{taskId,action,message}` |
+| `POST /api/agents/{id}/delegate` | Project lead creates `{parentTaskId,title,body,assigneeId}` subtask |
+
+Submission payload:
 
 ```json
 {
@@ -147,37 +208,60 @@ Task events require `taskId` and `message`. Example submission:
 }
 ```
 
-`deliverable.title` and `deliverable.content` are required; its URL is optional and
-must use HTTP(S). `completed` is an alias for `submitted` and also requires a
-deliverable. Submission moves work to Review; bots cannot directly mark it Done.
-Review the submitted work on the task page: approve to finish, or request changes
-with mandatory feedback to return it to In progress. Revisions and prior feedback
-remain on the task. Pending review prevents reassignment or status bypasses.
-Reports for tasks assigned to another agent return 409. Completed tasks must be
-reopened on the dashboard before further bot work.
+The title/content are required; an optional URL must use HTTP(S). `completed` is an
+alias for `submitted`. Submission moves work to Review. Dashboard operators or the
+project lead can approve to finish or request changes with mandatory feedback to
+return it to In progress. Self-review by a lead is forbidden. Pending review cannot
+be bypassed through ordinary status changes. Revisions and feedback remain on the
+task. Bots must reopen completed work through the dashboard before resubmitting.
 
-Dashboard task updates use `PATCH /api/tasks`. Review/comment payloads contain
-`id`, `action` (`approve`, `request_changes`, or `comment`), and `message`.
-The dashboard session protects these routes; bots use only the agent routes.
+#### Templates and recurring schedules
 
-Set each agent's instructions and heartbeat interval (1–1440 minutes) under its
-Settings tab. Polling returns these settings for the runtime to follow. Last seen
-is the newer of heartbeat and activity; offline means more than two expected
-intervals without a report (default: 15-minute interval, 30-minute grace window).
-Workload is blocked if any task is blocked, working if any is doing, and idle
-otherwise. Offline agents retain their assigned work. Completion rate covers
-currently assigned tasks, not lifetime throughput.
+Use **Automation** to create/edit templates with titles, descriptions, priorities,
+projects, assignees, capability tags, and cross-agent subtasks. Existing task details
+can be saved as a template including their direct subtasks. Instantiate a template
+with an editable task title, then adjust the new task's fields before pickup.
 
-Assignment does not launch a bot or call its webhook. The runtime must poll,
-execute, and report. Connection setup verifies recent reporting; it does not
-provision a runtime or generate separate bot credentials. The API key is currently
-shared across registered agents. Direct agent chat and automatic unassigned-task
-claiming are not part of this workflow.
+Daily, weekly, and monthly schedules instantiate templates at the selected EAT time.
+Month-end schedules clamp to the month's last day and restore their original day in
+longer months. Pause/resume or edit/delete schedules from Automation. Referenced
+templates cannot be deleted until their schedules are removed. A failed occurrence
+is shown on its schedule without leaving partial tasks. Catch-up is bounded to 30
+occurrences per schedule per tick; repeated ticks continue catch-up without duplicates.
 
-Blob persistence retains the existing per-process mutation queue; simultaneous
-writes from separate server instances are not transactional. A transactional data
-store is needed before adding concurrent automatic task claiming.
+Due schedules are processed by agent heartbeats and pickup requests. For scheduling
+when no agent is connected, set `CRON_SECRET` and have an external scheduler call
+`GET /api/cron` with `Authorization: Bearer <CRON_SECRET>` every minute, or run:
 
-Run `npm test` for lifecycle and in-memory API contract tests, and
-`npm run typecheck` for TypeScript validation. API tests cover bot ownership,
-authentication, submission, revision, approval, comments, and review bypass guards.
+```bash
+WATCHTOWER_URL=https://your-host CRON_SECRET=your-secret npm run automation
+```
+
+A running worker/external scheduler is required for unattended timing; the dashboard
+cannot run background jobs when no process is active. Cron authentication is checked
+in the route independently of dashboard login. A manual tick is also available.
+
+#### Persistence and migration
+
+The store uses one private `watchtower/state.json` with ETag-based conditional writes
+and bounded retries. Concurrent changes re-read and reapply their draft on conflicts,
+so pickup and schedule occurrence creation cannot overwrite a simultaneous update.
+Callbacks must only mutate their supplied draft; external side effects are not retry-safe.
+
+On first use, the app imports the newest legacy `watchtower/data/` snapshot (all list
+pages are considered), or `watchtower/store.json`, and preserves the original files.
+Explicit legacy assignees become project members when initializing missing team data.
+Existing owner labels remain separate from bot assignment. Read/parse failures fail
+closed instead of writing a fresh seed over unavailable data. Stop old-version writers
+when rolling out this migration; they still write legacy snapshots rather than the
+new canonical state. This remains a JSON Blob store, not a relational database.
+
+#### Validation
+
+`npm test` runs lifecycle, workflow, route-contract, scoped-authentication, storage
+conflict/migration, and monitoring checks against isolated in-memory fixtures. It does
+not modify production data. `npm run typecheck` checks TypeScript, and `npm run build`
+validates the production routes. Feature references: [dashboard](https://www.agentcenter.cloud/features/agent-dashboard),
+[orchestration](https://www.agentcenter.cloud/features/task-orchestration),
+[monitoring](https://www.agentcenter.cloud/features/agent-monitoring), and
+[multi-agent workflows](https://www.agentcenter.cloud/features/multi-agent-workflows).

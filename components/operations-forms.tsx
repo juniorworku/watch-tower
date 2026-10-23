@@ -30,14 +30,14 @@ export function ReviewForm({ task }: { task: TaskItem }) {
   </div>;
 }
 
-export function TaskEditForm({ task }: { task: TaskItem }) {
+export function TaskEditForm({ task, projects = [], tasks = [] }: { task: TaskItem; projects?: { id: string; name: string }[]; tasks?: TaskItem[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault(); setBusy(true); setNotice("");
     const fd = new FormData(e.currentTarget);
-    try { await patch("/api/tasks", { ...Object.fromEntries(fd), id: task.id }); setNotice("Changes saved"); router.refresh(); }
+    try { await patch("/api/tasks", { ...Object.fromEntries(fd), id: task.id, dependsOn: fd.getAll("dependsOn") }); setNotice("Changes saved"); router.refresh(); }
     catch (e) { setNotice((e as Error).message); }
     finally { setBusy(false); }
   }
@@ -45,7 +45,9 @@ export function TaskEditForm({ task }: { task: TaskItem }) {
     <label className="field-label">Title<input className="field mt-1 w-full" name="title" required defaultValue={task.title} /></label>
     <label className="field-label">Description<textarea className="field mt-1 w-full" name="body" rows={5} defaultValue={task.body} /></label>
     <div className="grid grid-cols-2 gap-3"><label className="field-label">Priority<select className="field mt-1 w-full" name="priority" defaultValue={task.priority || "normal"}>{["low", "normal", "high", "urgent"].map(p => <option key={p}>{p}</option>)}</select></label><label className="field-label">Due date<input className="field mt-1 w-full" type="date" name="due" defaultValue={task.due} /></label></div>
-    <label className="field-label">Project<input className="field mt-1 w-full" name="project" defaultValue={task.project} /></label>
+    <label className="field-label">Project<select className="field mt-1 w-full" name="projectId" defaultValue={task.projectId || projects.find(p => p.name === task.project)?.id || ""}><option value="">No project</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+    <label className="field-label">Required agent tags<input className="field mt-1 w-full" name="requiredTags" defaultValue={task.requiredTags?.join(", ") || ""} /></label>
+    <label className="field-label">Wait for these tasks<select multiple className="field mt-1 w-full" name="dependsOn" defaultValue={task.dependsOn || []}>{tasks.filter(t => t.id !== task.id && t.project === task.project).map(t => <option key={t.id} value={t.id}>{t.title}</option>)}</select><span className="mt-1 block font-normal text-slate-400">Hold Ctrl or Command to select multiple dependencies.</span></label>
     <button className="secondary-button" disabled={busy}>{busy ? "Saving…" : "Save task"}</button><p className="text-sm" role="status">{notice}</p>
   </form>;
 }
@@ -65,6 +67,8 @@ export function AgentSettingsForm({ agent }: { agent: AgentItem }) {
   }
   return <form onSubmit={submit} className="space-y-4">
     <div className="grid gap-4 sm:grid-cols-2"><label className="field-label">Name<input name="name" required defaultValue={agent.name} className="field mt-1 w-full" /></label><label className="field-label">Role<input name="role" defaultValue={agent.role} className="field mt-1 w-full" /></label></div>
+    <label className="field-label">Agent tags (comma separated)<input name="tags" defaultValue={agent.tags.join(", ")} className="field mt-1 w-full" /></label>
+    <label className="field-label">Personality<textarea name="personality" rows={3} defaultValue={agent.personality || ""} placeholder="Tone, communication style, and working preferences." className="field mt-1 w-full" /></label>
     <label className="field-label">Instructions<textarea name="instructions" rows={8} defaultValue={agent.instructions || ""} placeholder="Responsibilities, expected outputs, and working guidelines for this agent." className="field mt-1 w-full" /></label>
     <label className="field-label">Expected heartbeat interval (minutes)<input name="heartbeatIntervalMinutes" type="number" min={1} max={1440} required defaultValue={agent.heartbeatIntervalMinutes || 15} className="field mt-1 w-full" /></label>
     <p className="text-xs text-slate-500">Marked offline after two missed intervals. Your agent runtime must send heartbeats on this schedule.</p>

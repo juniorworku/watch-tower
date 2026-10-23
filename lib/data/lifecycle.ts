@@ -32,7 +32,7 @@ export function agentHealth(agent: AgentItem, tasks: TaskItem[], now = Date.now(
   const active = assigned.filter(t => t.status === "doing");
   const blocked = assigned.filter(t => t.status === "blocked");
   return { lastSeenAt, online, active, blocked, assigned,
-    state: !online ? "offline" : blocked.length ? "blocked" : active.length ? "working" : "idle" };
+    state: !online ? "offline" : blocked.length || /blocked|error/i.test(agent.status || "") ? "blocked" : active.length || /working/i.test(agent.status || "") ? "working" : "idle" };
 }
 
 export function submitDeliverable(task: TaskItem, agentId: string, input: { title?: unknown; content?: unknown; url?: unknown }, now: string) {

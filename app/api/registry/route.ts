@@ -7,7 +7,7 @@ const TYPES: AgentType[] = ["bot", "agent", "sub-agent"];
 
 export async function GET() {
   const store = await loadStore();
-  return NextResponse.json({ agents: store.agents });
+  return NextResponse.json({ agents: store.agents.map(({ credentialHash: _hash, ...a }) => a) });
 }
 
 export async function POST(req: NextRequest) {
@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
       .filter(Boolean),
     createdAt: now,
     updatedAt: now,
+    personality: String(body.personality || "").trim(),
     instructions: String(body.instructions || "").trim(),
     heartbeatIntervalMinutes: body.heartbeatIntervalMinutes || 15,
     lastHeartbeat: null,
@@ -78,6 +79,7 @@ export async function PATCH(req: NextRequest) {
             .map((t: string) => t.trim())
             .filter(Boolean);
     }
+    if (body.personality != null) a.personality = String(body.personality).trim();
     if (body.instructions != null) a.instructions = String(body.instructions).trim();
     if (body.heartbeatIntervalMinutes != null) a.heartbeatIntervalMinutes = body.heartbeatIntervalMinutes;
     a.updatedAt = new Date().toISOString();
@@ -94,13 +96,13 @@ export async function DELETE(req: NextRequest) {
   let found = false;
   let assigned = false;
   await mutateStore((s) => {
-    if (s.tasks.some(t => t.assigneeId === id)) { assigned = true; return; }
+    if (s.tasks.some(t => t.assigneeId === id) || s.projects.some(p => p.leadAgentId === id || p.memberIds?.includes(id))) { assigned = true; return; }
     const before = s.agents.length;
     s.agents = s.agents.filter((a) => a.id !== id);
     for (const a of s.agents) if (a.parentId === id) a.parentId = null;
     found = s.agents.length < before;
   });
-  if (assigned) return NextResponse.json({ error: "Unassign or reassign this agent’s tasks before removing it" }, { status: 409 });
+  if (assigned) return NextResponse.json({ error: "Unassign tasks and remove this agent from project teams before removing it" }, { status: 409 });
   if (!found) return NextResponse.json({ error: "not found" }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

@@ -4,7 +4,7 @@ import { TASK_LABELS } from "@/lib/data/types";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
-export function TaskCreateForm({ owners, projects, agents = [] }: { owners: string[]; projects: string[]; agents?: { id: string; name: string }[] }) {
+export function TaskCreateForm({ owners, projects, agents = [], projectRecords = [] }: { owners: string[]; projects: string[]; projectRecords?: { id: string; name: string }[]; agents?: { id: string; name: string }[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -23,7 +23,8 @@ export function TaskCreateForm({ owners, projects, agents = [] }: { owners: stri
           title: fd.get("title"),
           priority: fd.get("priority"),
           owner: fd.get("owner"),
-          project: fd.get("project"),
+          projectId: fd.get("projectId"),
+        requiredTags: fd.get("requiredTags"),
           due: fd.get("due"),
           body: fd.get("body"),
         }),
@@ -48,10 +49,10 @@ export function TaskCreateForm({ owners, projects, agents = [] }: { owners: stri
       </select>
       <input name="owner" list="owners" placeholder="Owner" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
       <datalist id="owners">{[...new Set(owners.filter(Boolean))].map((o) => <option key={o} value={o} />)}</datalist>
-      <input name="project" list="projects" placeholder="Project" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
-      <datalist id="projects">{projects.map((p) => <option key={p} value={p} />)}</datalist>
+      <select aria-label="Project" name="projectId" className="field"><option value="">No project</option>{projectRecords.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
       <input name="due" type="date" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
       <select aria-label="Assign new task to bot" name="assigneeId" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"><option value="">Unassigned</option>{agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
+      <input name="requiredTags" aria-label="Required agent tags" placeholder="Required tags: research, writing" className="field" />
       <input name="body" aria-label="Task description" placeholder="Description and expected outcome" className="md:col-span-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
       <button disabled={busy} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">{busy ? "…" : "Add task"}</button>
       {err && <p className="md:col-span-3 text-sm text-rose-700">{err}</p>}

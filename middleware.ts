@@ -5,7 +5,7 @@ export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
   // Agent machine API uses Bearer WATCHTOWER_API_KEY — checked in the route handlers.
-  if (pathname === "/api/agents" || pathname.startsWith("/api/agents/")) {
+  if (pathname === "/api/cron" || pathname === "/api/agents" || pathname.startsWith("/api/agents/")) {
     return NextResponse.next();
   }
 

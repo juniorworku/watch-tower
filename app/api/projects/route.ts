@@ -1,52 +1,38 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getStore, mutateStore, newId } from "@/lib/data/store";
-
+import { loadStore, mutateStore, newId } from "@/lib/data/store";
+import { LifecycleError } from "@/lib/data/lifecycle";
+import { projectFor } from "@/lib/data/workflows";
 export const runtime = "nodejs";
-
-export async function GET() {
-  const store = await getStore();
-  return NextResponse.json({ projects: store.projects });
+export async function GET() { return NextResponse.json({ projects: (await loadStore()).projects }); }
+async function save(req: NextRequest, create: boolean) {
+  const b = await req.json().catch(() => ({}));
+  const id = create ? newId("proj") : String(b.id || "");
+  try {
+    const store = await mutateStore(s => {
+      const now = new Date().toISOString();
+      const existing = s.projects.find(p => p.id === id);
+      if (!create && !existing) throw new LifecycleError("project not found", 404);
+      const name = String(b.name ?? existing?.name ?? "").trim();
+      if (!name) throw new LifecycleError("project name required");
+      if (s.projects.some(p => p.id !== id && p.name.toLowerCase() === name.toLowerCase())) throw new LifecycleError("project name already exists", 409);
+      const members = b.memberIds === undefined ? existing?.memberIds || [] : Array.isArray(b.memberIds) ? [...new Set(b.memberIds.map(String))] as string[] : [];
+      const lead = b.leadAgentId === undefined ? existing?.leadAgentId || null : b.leadAgentId ? String(b.leadAgentId) : null;
+      if (lead && !members.includes(lead)) members.push(lead);
+      if (members.some(id => !s.agents.some(a => a.id === id))) throw new LifecycleError("team member not found");
+      const tasks = existing ? s.tasks.filter(t => projectFor(s, t)?.id === id) : [];
+      if (tasks.some(t => t.assigneeId && t.status !== "done" && !members.includes(t.assigneeId))) throw new LifecycleError("reassign open tasks before removing their agents from this project", 409);
+      const project = existing || { id, name, owner: "", status: "active", archived: false, started: now.slice(0, 10), body: "", createdAt: now, updatedAt: now };
+      Object.assign(project, { name, memberIds: members, leadAgentId: lead, updatedAt: now });
+      for (const key of ["body", "owner", "status", "started"] as const) if (b[key] !== undefined) project[key] = String(b[key]);
+      if (b.archived !== undefined) project.archived = b.archived === true;
+      if (create) s.projects.unshift(project);
+      for (const t of tasks) { t.projectId = id; t.project = name; }
+    });
+    return NextResponse.json({ project: store.projects.find(p => p.id === id) }, { status: create ? 201 : 200 });
+  } catch (e) {
+    if (e instanceof LifecycleError) return NextResponse.json({ error: e.message }, { status: e.status });
+    throw e;
+  }
 }
-
-export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => ({}));
-  const name = String(body.name || "").trim();
-  if (!name) return NextResponse.json({ error: "name required" }, { status: 400 });
-  const now = new Date().toISOString();
-  const project = {
-    id: newId("proj"),
-    name,
-    status: String(body.status || "active").trim(),
-    archived: Boolean(body.archived),
-    owner: String(body.owner || "").trim(),
-    started: String(body.started || now.slice(0, 10)).trim(),
-    body: String(body.body || "").trim(),
-    createdAt: now,
-    updatedAt: now,
-  };
-  await mutateStore((s) => {
-    s.projects.unshift(project);
-  });
-  return NextResponse.json({ project }, { status: 201 });
-}
-
-export async function PATCH(req: NextRequest) {
-  const body = await req.json().catch(() => ({}));
-  const id = String(body.id || "").trim();
-  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  let found = false;
-  const store = await mutateStore((s) => {
-    const p = s.projects.find((x) => x.id === id);
-    if (!p) return;
-    found = true;
-    if (body.name != null) p.name = String(body.name).trim() || p.name;
-    if (body.status != null) p.status = String(body.status).trim();
-    if (body.archived != null) p.archived = Boolean(body.archived);
-    if (body.owner != null) p.owner = String(body.owner).trim();
-    if (body.started != null) p.started = String(body.started).trim();
-    if (body.body != null) p.body = String(body.body);
-    p.updatedAt = new Date().toISOString();
-  });
-  if (!found) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json({ project: store.projects.find((p) => p.id === id) });
-}
+export async function POST(req: NextRequest) { return save(req, true); }
+export async function PATCH(req: NextRequest) { return save(req, false); }

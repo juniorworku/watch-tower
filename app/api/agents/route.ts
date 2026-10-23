@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const auth = requireApiKey(req);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const store = await loadStore();
-  return NextResponse.json({ agents: store.agents, activities: store.activities.slice(0, 50) });
+  return NextResponse.json({ agents: store.agents.map(({ credentialHash: _hash, ...a }) => a), activities: store.activities.slice(0, 50) });
 }
 
 export async function POST(req: NextRequest) {
@@ -49,7 +49,8 @@ export async function POST(req: NextRequest) {
       tags: Array.isArray(body.tags) ? body.tags.map(String) : [],
       createdAt: now,
       updatedAt: now,
-      instructions: String(body.instructions || "").trim(),
+      personality: String(body.personality || "").trim(),
+    instructions: String(body.instructions || "").trim(),
       heartbeatIntervalMinutes: body.heartbeatIntervalMinutes || 15,
       lastHeartbeat: null,
       lastActivity: null,
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
         ...prev,
         ...base,
         createdAt: prev.createdAt,
+        personality: body.personality === undefined ? prev.personality : base.personality,
         instructions: body.instructions === undefined ? prev.instructions : base.instructions,
         heartbeatIntervalMinutes: body.heartbeatIntervalMinutes === undefined ? prev.heartbeatIntervalMinutes : base.heartbeatIntervalMinutes,
         lastHeartbeat: prev.lastHeartbeat,
@@ -86,13 +88,13 @@ export async function DELETE(req: NextRequest) {
   let found = false;
   let assigned = false;
   await mutateStore((s) => {
-    if (s.tasks.some(t => t.assigneeId === id)) { assigned = true; return; }
+    if (s.tasks.some(t => t.assigneeId === id) || s.projects.some(p => p.leadAgentId === id || p.memberIds?.includes(id))) { assigned = true; return; }
     const before = s.agents.length;
     s.agents = s.agents.filter((a) => a.id !== id);
     for (const a of s.agents) if (a.parentId === id) a.parentId = null;
     found = s.agents.length < before;
   });
-  if (assigned) return NextResponse.json({ error: "Unassign or reassign this agent’s tasks before removing it" }, { status: 409 });
+  if (assigned) return NextResponse.json({ error: "Unassign tasks and remove this agent from project teams before removing it" }, { status: 409 });
   if (!found) return NextResponse.json({ error: "not found" }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

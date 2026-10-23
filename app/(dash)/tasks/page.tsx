@@ -49,7 +49,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         </form>
       </PageHeader>
 
-      <details open={sp.create === "1"} id="new-task" className="mb-6 rounded-2xl border border-slate-200 bg-white p-5"><summary className="cursor-pointer text-sm font-semibold text-indigo-600">＋ Create a task</summary><div className="mt-4"><TaskCreateForm owners={owners} projects={projects} agents={store.agents} /></div></details>
+      <details open={sp.create === "1"} id="new-task" className="mb-6 rounded-2xl border border-slate-200 bg-white p-5"><summary className="cursor-pointer text-sm font-semibold text-indigo-600">＋ Create a task</summary><div className="mt-4"><TaskCreateForm owners={owners} projects={projects} agents={store.agents.map(a => ({ id: a.id, name: a.name }))} projectRecords={store.projects.filter(p => !p.archived)} /></div></details>
 
       <div className="overflow-x-auto pb-4"><div className="grid grid-cols-1 gap-4 md:min-w-[1680px] md:grid-cols-6">
         {TASK_STATUSES.map((s) => {
@@ -75,7 +75,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                         {t.project && <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-violet-700">{t.project}</span>}
                         {t.due && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-700">due {formatDate(t.due)}</span>}
                       </div>
-                      <TaskAssignment id={t.id} assigneeId={t.assigneeId} agents={store.agents} locked={t.status === "review"} />
+                      <TaskAssignment id={t.id} assigneeId={t.assigneeId} agents={store.agents.map(a => ({ id: a.id, name: a.name }))} locked={t.status === "review"} />
                       <div className="mt-3 flex items-center justify-between"><Badge tone={t.priority === "urgent" || t.priority === "high" ? "amber" : "slate"}>{t.priority || "normal"}</Badge><Link href={`/tasks/${t.id}`} className="text-xs font-medium text-indigo-600">{t.status === "review" ? "Review output →" : "Open task →"}</Link></div>
                     </div>
                   );

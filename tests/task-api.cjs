@@ -10,12 +10,14 @@ function compile(path, imports = {}) {
 }
 const types = compile('lib/data/types.ts');
 const lifecycle = compile('lib/data/lifecycle.ts');
+const workflows = compile('lib/data/workflows.ts', { './lifecycle': lifecycle });
 function setup() {
-  let store = { agents: [{ id: 'a', name: 'Alpha' }, { id: 'b', name: 'Beta' }], tasks: [], activities: [] };
+  let store = { agents: [{ id: 'a', name: 'Alpha' }, { id: 'b', name: 'Beta' }], tasks: [], activities: [], projects: [] };
   const imports = {
     '@/lib/data/types': types,
+    '@/lib/data/workflows': workflows,
     '@/lib/data/lifecycle': lifecycle,
-    '@/lib/data/api-auth': { requireApiKey: req => req.headers.get('authorization') === 'Bearer test-key' ? { ok: true } : { ok: false, status: 401, error: 'Unauthorized' } },
+    '@/lib/data/api-auth': { requireAgentAuth: async req => req.headers.get('authorization') === 'Bearer test-key' ? { ok: true } : { ok: false, status: 401, error: 'Unauthorized' } },
     '@/lib/data/store': { newId: prefix => `${prefix}-${crypto.randomUUID()}`, loadStore: async () => structuredClone(store), mutateStore: async fn => { const draft = structuredClone(store); await fn(draft); store = draft; return store; } },
   };
   return { tasks: compile('app/api/tasks/route.ts', imports), activity: compile('app/api/agents/[id]/activity/route.ts', imports), poll: compile('app/api/agents/[id]/tasks/route.ts', imports), get: () => store };

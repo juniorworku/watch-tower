@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { loadStore, mutateStore, newId } from "@/lib/data/store";
 import { assignTask, LifecycleError, reviewDeliverable, setTaskStatus } from "@/lib/data/lifecycle";
+import { ensureChildrenDone, projectFor, validateLinks } from "@/lib/data/workflows";
 import { TASK_STATUSES, type TaskItem, type TaskStatus } from "@/lib/data/types";
 
 export const runtime = "nodejs";
@@ -19,6 +20,10 @@ export async function POST(req: NextRequest) {
   const task: TaskItem = {
     id: newId("task"),
     title,
+    projectId: body.projectId ? String(body.projectId) : null,
+    parentTaskId: body.parentTaskId ? String(body.parentTaskId) : null,
+    dependsOn: Array.isArray(body.dependsOn) ? body.dependsOn.map(String) : [],
+    requiredTags: Array.isArray(body.requiredTags) ? body.requiredTags.map(String) : String(body.requiredTags || "").split(",").map((s: string) => s.trim()).filter(Boolean),
     status,
     owners: Array.isArray(body.owners)
       ? body.owners.map(String)
@@ -39,8 +44,16 @@ export async function POST(req: NextRequest) {
   };
   try {
     await mutateStore((s) => {
-      if (body.assigneeId) assignTask(s, task, String(body.assigneeId), now);
-      s.tasks.unshift(task);
+      const draft = { ...structuredClone(task), assigneeId: null, assigneeName: null, assignmentHistory: [] };
+      if (draft.parentTaskId) {
+        const parent = s.tasks.find(t => t.id === draft.parentTaskId);
+        if (parent) { draft.projectId = projectFor(s, parent)?.id || null; draft.project = parent.project; }
+      }
+      if (draft.projectId) draft.project = s.projects.find(p => p.id === draft.projectId)?.name || "";
+      if (body.assigneeId) assignTask(s, draft, String(body.assigneeId), now);
+      validateLinks(s, draft);
+      s.tasks.unshift(draft);
+      Object.assign(task, draft);
     });
   } catch (error) {
     if (error instanceof LifecycleError) return NextResponse.json({ error: error.message }, { status: error.status });
@@ -72,10 +85,12 @@ export async function PATCH(req: NextRequest) {
       if (!["approve", "request_changes", "comment"].includes(body.action)) throw new LifecycleError("invalid action");
       const feedback = String(body.message || "").trim();
       if (body.action === "comment" && !feedback) throw new LifecycleError("comment required");
+      if (body.action === "approve") ensureChildrenDone(s, t);
       if (body.action !== "comment") reviewDeliverable(t, body.action, feedback, now);
       s.activities.unshift({ id: newId("act"), agentId: t.assigneeId || "operator", actor: "operator", taskId: t.id,
         kind: body.action === "approve" ? "approved" : body.action === "request_changes" ? "changes_requested" : "comment",
         message: feedback || "Deliverable approved", at: now });
+      if (body.action !== "comment") t.deliverables!.at(-1)!.reviewedBy = "operator";
       t.updatedAt = now;
       updated = t;
       return;
@@ -92,10 +107,16 @@ export async function PATCH(req: NextRequest) {
       setTaskStatus(t, String(body.status).toLowerCase() as TaskStatus, now);
       if (t.assigneeId) s.activities.unshift({ id: newId("act"), agentId: t.assigneeId, taskId: t.id, actor: "operator", kind: "status", message: `Dashboard changed status to ${t.status}`, at: now });
     }
+    if (body.projectId !== undefined) { t.projectId = body.projectId ? String(body.projectId) : null; t.project = t.projectId ? s.projects.find(p => p.id === t.projectId)?.name || "" : ""; }
+    if (body.parentTaskId !== undefined) t.parentTaskId = body.parentTaskId ? String(body.parentTaskId) : null;
+    if (body.dependsOn !== undefined) t.dependsOn = Array.isArray(body.dependsOn) ? body.dependsOn.map(String) : [];
+    if (body.requiredTags !== undefined) t.requiredTags = Array.isArray(body.requiredTags) ? body.requiredTags.map(String) : String(body.requiredTags).split(",").map((s: string) => s.trim()).filter(Boolean);
     if (body.owners != null) t.owners = Array.isArray(body.owners) ? body.owners.map(String) : [];
     if (body.project != null) t.project = String(body.project).trim();
     if (body.due != null) t.due = String(body.due).trim();
     if (body.body != null) t.body = String(body.body);
+    if (body.projectId === undefined && body.project != null) t.projectId = s.projects.find(p => p.name.toLowerCase() === t.project.toLowerCase())?.id || null;
+    validateLinks(s, t);
     t.updatedAt = new Date().toISOString();
     updated = t;
   });

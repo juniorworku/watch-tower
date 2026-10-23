@@ -22,6 +22,7 @@ export type Deliverable = {
   url?: string;
   submittedAt: string;
   review: "pending" | "approved" | "changes_requested";
+  reviewedBy?: string;
   feedback?: string;
   reviewedAt?: string;
 };
@@ -30,6 +31,13 @@ export type TaskItem = {
   id: string;
   title: string;
   status: TaskStatus;
+  projectId?: string | null;
+  parentTaskId?: string | null;
+  dependsOn?: string[];
+  requiredTags?: string[];
+  scheduleId?: string;
+  scheduledFor?: string;
+  claimedAt?: string | null;
   deliverables?: Deliverable[];
   assigneeId?: string | null;
   assigneeName?: string | null;
@@ -47,6 +55,8 @@ export type TaskItem = {
 };
 
 export type ProjectItem = {
+  memberIds?: string[];
+  leadAgentId?: string | null;
   id: string;
   name: string;
   status: string;
@@ -80,6 +90,9 @@ export type AgentItem = {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+  personality?: string;
+  credentialHash?: string;
+  credentialCreatedAt?: string;
   instructions?: string;
   heartbeatIntervalMinutes?: number;
   lastHeartbeat: string | null;
@@ -92,13 +105,34 @@ export type ActivityItem = {
   agentId: string;
   taskId?: string;
   actor?: "agent" | "operator";
-  kind: "heartbeat" | "activity" | "status" | "assigned" | "accepted" | "rejected" | "started" | "progress" | "blocked" | "completed" | "failed" | "re-assigned" | "submitted" | "approved" | "changes_requested" | "comment";
+  kind: "heartbeat" | "activity" | "status" | "assigned" | "accepted" | "rejected" | "started" | "progress" | "blocked" | "completed" | "failed" | "re-assigned" | "submitted" | "approved" | "changes_requested" | "comment" | "claimed" | "message";
   message: string;
   meta?: Record<string, unknown>;
   at: string;
 };
 
+export type TaskBlueprint = {
+  title: string;
+  body: string;
+  priority: NonNullable<TaskItem["priority"]>;
+  projectId?: string | null;
+  assigneeId?: string | null;
+  requiredTags?: string[];
+  subtasks?: { title: string; body: string; assigneeId?: string | null; requiredTags?: string[] }[];
+};
+export type TaskTemplate = { id: string; name: string; blueprint: TaskBlueprint; createdAt: string; updatedAt: string };
+export type RecurringSchedule = {
+  id: string; name: string; templateId: string; cadence: "daily" | "weekly" | "monthly";
+  nextRunAt: string; anchorDay: number; enabled: boolean; lastError?: string; lastRunAt?: string; createdAt: string;
+};
+export type AgentMessage = {
+  id: string; agentId: string; text: string; createdAt: string;
+  deliveredAt?: string; reply?: string; repliedAt?: string;
+};
 export type StoreData = {
+  templates?: TaskTemplate[];
+  schedules?: RecurringSchedule[];
+  messages?: AgentMessage[];
   version: 1;
   seededAt: string;
   updatedAt: string;
