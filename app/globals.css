@@ -1,0 +1,12 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+:root { color-scheme: dark; }
+body { @apply bg-slate-950 text-slate-200 antialiased; }
+
+.prose a.wikilink { @apply text-sky-300 no-underline border-b border-sky-300/30 hover:border-sky-300; }
+.prose .wikilink-missing { @apply text-slate-400 border-b border-dashed border-slate-500 cursor-help; }
+.prose table { @apply text-sm; }
+.prose code::before, .prose code::after { content: none; }
+.prose :where(code):not(:where(pre *)) { @apply bg-slate-800/80 rounded px-1 py-0.5 font-normal; }
+.prose pre { @apply bg-slate-900 border border-slate-800; }
