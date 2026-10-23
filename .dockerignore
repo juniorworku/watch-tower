@@ -4,10 +4,10 @@
 **/.venv
 **/__pycache__
 **/.pytest_cache
-**/.env
-**/.env.local
-**/.env.production*
+**/.env*
 **/*.tsbuildinfo
 backend/data
+data
+**/*.sqlite3*
 exports
 .secrets

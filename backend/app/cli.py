@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import secrets
 from .config import Settings
-from .repository import Repository
+from .repository import Repository, create_repository
 from .seed import empty_state
 
 
@@ -33,7 +33,7 @@ def main():
             output.write(f"scrypt${salt.hex()}${digest.hex()}\n")
         print(f"Password hash written to {args.file}; keep this file private.")
         return
-    repository = Repository(args.database or Settings.from_env().database_path, empty_state)
+    repository = Repository(args.database, empty_state) if args.database else create_repository(Settings.from_env(), empty_state)
     repository.initialize()
     if args.command == "import-state":
         counts = repository.import_state(json.loads(args.file.read_text()), replace=args.replace)

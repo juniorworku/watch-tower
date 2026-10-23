@@ -1,15 +1,24 @@
 """Backend-only configuration. Never serialize credential values to the UI."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 from pathlib import Path
 from dotenv import dotenv_values
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parent
+
+
+def default_database_path():
+    current = ROOT / "data/watchtower.sqlite3"
+    legacy = REPO / "data/watchtower.sqlite3"
+    # Keep existing installations on their database after correcting ROOT.
+    return legacy if legacy.exists() and not current.exists() else current
+
 
 @dataclass(frozen=True)
 class Settings:
-    database_path: Path = ROOT / "data/watchtower.sqlite3"
+    database_path: Path = field(default_factory=default_database_path)
+    database_url: str = ""
     password: str = ""
     password_hash: str = ""
     master_key: str = ""
@@ -27,7 +36,8 @@ class Settings:
             values.update({k: v for k, v in dotenv_values(file).items() if v is not None})
         values.update(os.environ)
         return cls(
-            database_path=Path(values.get("WATCHTOWER_DATABASE", str(ROOT / "data/watchtower.sqlite3"))).resolve(),
+            database_url=values.get("DATABASE_URL", ""),
+            database_path=Path(values.get("WATCHTOWER_DATABASE", str(default_database_path()))).resolve(),
             password=values.get("DASHBOARD_PASSWORD", ""), password_hash=values.get("DASHBOARD_PASSWORD_HASH", ""),
             master_key=values.get("WATCHTOWER_API_KEY", ""), cron_secret=values.get("CRON_SECRET", ""),
             public_url=values.get("PUBLIC_APP_URL", "http://localhost:3000").rstrip("/"),

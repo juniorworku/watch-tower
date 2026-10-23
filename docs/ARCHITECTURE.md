@@ -13,7 +13,7 @@ flowchart LR
   Cron[Scheduler] --> API
   API --> Auth[Session and scoped-key auth]
   API --> Domain[Python domain services]
-  Domain --> SQLite[(Transactional SQLite)]
+  Domain --> PostgreSQL[(Transactional PostgreSQL)]
   API --> Providers[Read-only providers and vault snapshot]
 ```
 
@@ -41,7 +41,7 @@ have been removed rather than maintained as competing backends.
 | `schemas.py` | Validated wire payloads, preserving camelCase JSON compatibility |
 | `domain.py` | Assignments, pickup, dependencies, reports, reviews, recurrence |
 | `admin.py` | Registry, projects, templates, delegation, messaging |
-| `repository.py` | SQLite initialization, reads, write transactions, explicit import |
+| `repository.py` | PostgreSQL/SQLite adapters, transactions, explicit import |
 | `monitoring.py` | Health, completion trends, workload, public state projection |
 | `integrations.py` | Read-only OAuth/provider calls, Drive cache and snapshot fallback |
 | `routers/` | HTTP handlers and authentication dependencies |
@@ -69,15 +69,22 @@ bodies return 422 with field messages but no submitted input values.
 
 ## Persistence
 
-SQLite currently stores the compatible version-1 state as one JSON aggregate, with
-a revision number. This deliberately avoids simultaneously changing all domain
-record shapes during the service split. It is **not** a normalized relational model.
-`BEGIN IMMEDIATE` serializes read-modify-write operations across threads/processes
-using the same database file. Exceptions roll back the entire operation, including
-partial template instantiation. WAL is enabled; busy writes have a bounded timeout.
+Docker uses PostgreSQL 17, selected by `DATABASE_URL`. The compatible version-1
+state is stored as a JSONB aggregate with a revision number. `SELECT ... FOR UPDATE`
+serializes state mutations; each operation commits atomically or rolls back on
+failure. Concurrent startup uses a transaction-level advisory lock for schema
+creation and seeding. Connection, lock, and statement waits are bounded. This is
+not yet a normalized table-per-entity schema.
+Connection contexts follow Psycopg's documented [commit/rollback behavior](https://www.psycopg.org/psycopg3/docs/basic/transactions.html),
+and records use its [JSONB adapter](https://www.psycopg.org/psycopg3/docs/basic/adapt.html#json-adaptation).
 
-Durable storage, backups, and one shared database file are required. A future
-PostgreSQL migration/normalized schema is a separate task, not claimed as completed.
+Without `DATABASE_URL`, the legacy SQLite adapter supports local development and
+explicit migration exports. It uses WAL and `BEGIN IMMEDIATE` transactions.
+The CLI imports into the configured adapter, validates records, and refuses to
+replace populated state without an explicit flag. Docker PostgreSQL data lives
+in a named volume, with no database port published to the host. The backend health
+endpoint verifies database access. Compose waits for database and backend health.
+
 There is no runtime dependency on the old Node Blob SDK. `tools/export-blob.mjs`
 uses it only for a read-only, one-time data export.
 

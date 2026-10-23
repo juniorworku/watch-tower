@@ -1,4 +1,4 @@
-"""SQLite transaction boundary; one durable, backwards-compatible JSON aggregate."""
+"""Transactional state storage with PostgreSQL and legacy SQLite adapters."""
 from contextlib import contextmanager
 from copy import deepcopy
 import json
@@ -86,3 +86,50 @@ class Repository:
             current.update(validated)
             return {key: len(validated[key]) for key in COLLECTIONS}
         return self.mutate(import_document)
+
+
+class PostgresRepository(Repository):
+    def __init__(self, database_url, seed=empty_state):
+        self.database_url = database_url
+        self.seed = seed
+
+    @contextmanager
+    def connect(self):
+        import psycopg
+        with psycopg.connect(self.database_url, connect_timeout=10,
+                             options="-c lock_timeout=15000 -c statement_timeout=30000") as connection:
+            yield connection
+
+    def initialize(self):
+        from psycopg.types.json import Jsonb
+        with self.connect() as connection:
+            # Serialize schema creation/seeding across simultaneous API starts.
+            connection.execute("SELECT pg_advisory_xact_lock(718274901)")
+            connection.execute("CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY CHECK(id=1), revision BIGINT NOT NULL, document JSONB NOT NULL)")
+            if not connection.execute("SELECT 1 FROM state WHERE id=1").fetchone():
+                connection.execute("INSERT INTO state VALUES (1, 1, %s)", (Jsonb(validate_state(self.seed())),))
+
+    def read(self):
+        with self.connect() as connection:
+            row = connection.execute("SELECT document FROM state WHERE id=1").fetchone()
+            if not row:
+                raise RuntimeError("Database is not initialized")
+            return row[0]
+
+    def mutate(self, operation):
+        from psycopg.types.json import Jsonb
+        with self.connect() as connection:
+            row = connection.execute("SELECT document FROM state WHERE id=1 FOR UPDATE").fetchone()
+            if not row:
+                raise RuntimeError("Database is not initialized")
+            state = row[0]
+            result = operation(state)
+            state["updatedAt"] = now_iso()
+            connection.execute("UPDATE state SET revision=revision+1, document=%s WHERE id=1", (Jsonb(state),))
+            return deepcopy(result)
+
+
+def create_repository(settings, seed=empty_state):
+    if settings.database_url:
+        return PostgresRepository(settings.database_url, seed)
+    return Repository(settings.database_path, seed)

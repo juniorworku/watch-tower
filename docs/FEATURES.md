@@ -130,10 +130,11 @@ in the route independently of dashboard login. A manual tick is also available.
 
 #### Persistence and migration
 
-FastAPI now owns transactional SQLite persistence. Records keep the version-1 JSON
+FastAPI owns transactional PostgreSQL persistence in Docker, with a legacy SQLite
+adapter for local development and migration exports. Records keep the version-1 JSON
 shape for compatibility with exported Blob state. See [architecture](ARCHITECTURE.md)
 for the transaction boundary and [the README](../README.md) for explicit read-only
-Blob export / SQLite import instructions. The legacy Blob store is not modified.
+Blob export, SQLite export, and PostgreSQL import instructions. The legacy Blob store is not modified.
 
 #### Validation
 
@@ -144,3 +145,12 @@ validates the production routes. Feature references: [dashboard](https://www.age
 [orchestration](https://www.agentcenter.cloud/features/task-orchestration),
 [monitoring](https://www.agentcenter.cloud/features/agent-monitoring), and
 [multi-agent workflows](https://www.agentcenter.cloud/features/multi-agent-workflows).
+
+Run the PostgreSQL contract tests against isolated temporary databases inside Docker:
+
+```bash
+docker compose exec -T -e WATCHTOWER_TEST_POSTGRES=1 backend python -m unittest backend.tests.test_postgres -v
+```
+
+These test concurrent startup, exclusive claims, rollback, persistence, import
+protection, API authentication, and task creation without changing application data.

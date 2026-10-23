@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import sqlite3
+import psycopg
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -7,14 +8,14 @@ from pydantic import ValidationError
 from .config import Settings
 from .domain import DomainError
 from .integrations import Integrations
-from .repository import Repository
+from .repository import create_repository
 from .seed import build_seed, empty_state
 from .routers import agents, cron, dashboard, integrations, session
 
 
 def create_app(settings=None, repository=None):
     settings = settings or Settings.from_env()
-    repository = repository or Repository(settings.database_path, build_seed if settings.seed_snapshot else empty_state)
+    repository = repository or create_repository(settings, build_seed if settings.seed_snapshot else empty_state)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -40,7 +41,9 @@ def create_app(settings=None, repository=None):
         return JSONResponse({"error": "Invalid template or request fields"}, status_code=422)
 
     @app.exception_handler(sqlite3.OperationalError)
-    async def storage_error(_request: Request, _error: sqlite3.OperationalError):
+    @app.exception_handler(psycopg.OperationalError)
+    @app.exception_handler(psycopg.InterfaceError)
+    async def storage_error(_request: Request, _error: Exception):
         return JSONResponse({"error": "Database unavailable or busy; retry this request"}, status_code=503)
 
     @app.middleware("http")
@@ -53,6 +56,7 @@ def create_app(settings=None, repository=None):
 
     @app.get("/health", tags=["health"])
     def health():
+        repository.read()
         return {"status": "ok", "service": "watchtower-backend"}
 
     for router in (session.router, agents.router, cron.router, dashboard.router, integrations.router):

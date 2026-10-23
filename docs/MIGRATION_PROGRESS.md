@@ -2,6 +2,9 @@
 
 Started and completed: 2026-10-24 (Africa/Addis_Ababa).
 
+Latest deployment: the Docker/PostgreSQL section below supersedes the original
+SQLite-only deployment limits recorded during the service separation.
+
 Status: implementation and local validation complete; production cutover not performed.
 
 ## Objective
@@ -97,15 +100,76 @@ catch-up/month-end EAT behavior, backup/import refusal, and read-only vault fall
 - Live Blob export/import was not run. Tools and step-by-step commands are in the
   README. Stop legacy writers, export once, import before seeding the new database,
   then start the new services. Original Blob objects remain available for rollback.
-- Docker configuration was parsed; container images were not built/deployed here.
+- At the initial separation, Docker configuration was parsed; images had not yet been built/deployed.
   Compose is invoked with an explicit empty CLI env file to avoid interpreting
   legacy root password hashes as variable references. Quote scrypt hashes in the
   backend env file.
 - External provider calls were ported and fixture-tested, not tested against live
   accounts. Runtime credentials and scheduler/agent command configuration remain
   operator-supplied, as before.
-- SQLite currently stores the compatible JSON aggregate and requires durable storage
+- At the initial separation, SQLite stored the compatible JSON aggregate and required durable storage
   shared by backend workers on one host. PostgreSQL and relational normalization are
   intentionally outside this separation.
 - The frontend was verified by server rendering and HTTP tests; no pixel-level
   browser visual review or public deployment is claimed.
+
+## Local sign-in repair — 2026-10-24
+
+- Corrected the backend configuration root so backend `.env` and `.env.local`
+  load after the legacy root files, as documented.
+- Replaced the conflicting local password hash through an ignored, private
+  `backend/.env.local`; original root environment files remain unchanged.
+  A configured hash intentionally takes precedence over a plaintext password.
+- Preserved existing root `data/watchtower.sqlite3` installations when the new
+  backend database does not exist. Explicit database configuration still wins.
+- Added regression coverage for configuration paths, environment precedence,
+  and database continuity. All 20 backend tests passed.
+- Verified login and authenticated sessions against the running FastAPI on port
+  8000 and the current frontend on port 3001. An older root-directory Next.js
+  process occupies port 3000 and returns 404 for the sign-in routes; use port
+  3001 for the current session, or stop the old server before restarting the
+  current frontend on port 3000.
+
+## Docker and PostgreSQL deployment — 2026-10-24
+
+- Added PostgreSQL 17 as a third Compose service with a persistent named volume
+  and no published database port. Backend and frontend start after dependency
+  health checks pass. The API health check verifies database access.
+- Added a Psycopg PostgreSQL adapter selected by `DATABASE_URL`. JSONB preserves
+  the existing state model; row locks serialize mutations and transaction rollback
+  prevents partial updates. An advisory lock protects concurrent initialization.
+  Entity-per-table normalization remains separate work.
+- Kept SQLite support for development, exports, and rollback. Exported the existing
+  local database to private `exports/docker-migration.json`, then imported into an
+  empty PostgreSQL database without modifying the original SQLite records.
+- Migrated 5 tasks, 3 projects, 3 agents, and 1 log. Compared the complete imported
+  state, including IDs and credential hashes, to the source snapshot (excluding
+  the import timestamp).
+- Added `tools/prepare-docker.py` for private Docker environment setup. Generated
+  ignored backend `.env.docker` / `.env.postgres` with a random database password;
+  existing root and backend local configuration remains unchanged. Secrets and
+  SQLite files are excluded from image build contexts.
+- Built the production Next.js and FastAPI images and started the stack locally:
+  frontend `http://localhost:3002`, API `http://127.0.0.1:8001`, internal PostgreSQL
+  `db:5432`. Existing development servers were left in place.
+- PostgreSQL contract tests passed against disposable test databases: concurrent
+  initialization, exclusive claims, rollback, persistence, import protection,
+  authentication, task creation, and readiness.
+- Verified the configured sign-in password through Docker, authenticated cookies,
+  unauthorized API rejection, and seven dashboard routes. Docker usage, migration,
+  backup, port configuration, and persistent-volume behavior are in the README.
+- Final verification: 21 backend regression tests passed, plus both real PostgreSQL
+  contract tests. Recreated all three containers while retaining the named volume;
+  the complete imported state matched the snapshot afterwards and sign-in still
+  worked. All three services report healthy.
+
+
+## Simplified Docker commands — 2026-10-24
+
+- Normal startup now uses `docker compose up`; rebuild/background startup uses
+  `docker compose up -d --build`. Removed the extra env-file argument from current
+  operational documentation and clarified that setup/migration run only once.
+- Single-quoted the existing dollar-containing root `.env` hash so Compose does
+  not interpolate it. Verified every parsed raw env value stayed identical.
+  This changes quoting only; Docker credentials and PostgreSQL data are unchanged.
+- Plain `docker compose config --quiet` passes with no warnings.
