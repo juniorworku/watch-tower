@@ -12,6 +12,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
+  if (body.heartbeatIntervalMinutes != null && (!Number.isInteger(body.heartbeatIntervalMinutes) || body.heartbeatIntervalMinutes < 1 || body.heartbeatIntervalMinutes > 1440)) return NextResponse.json({ error: "heartbeat interval must be 1–1440 minutes" }, { status: 400 });
   const name = String(body.name || "").trim();
   if (!name) return NextResponse.json({ error: "name required" }, { status: 400 });
   const type = (TYPES.includes(body.type) ? body.type : "agent") as AgentType;
@@ -41,6 +42,8 @@ export async function POST(req: NextRequest) {
       .filter(Boolean),
     createdAt: now,
     updatedAt: now,
+    instructions: String(body.instructions || "").trim(),
+    heartbeatIntervalMinutes: body.heartbeatIntervalMinutes || 15,
     lastHeartbeat: null,
     lastActivity: null,
     lastActivityText: null,
@@ -55,6 +58,7 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const id = String(body.id || "").trim();
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+  if (body.heartbeatIntervalMinutes != null && (!Number.isInteger(body.heartbeatIntervalMinutes) || body.heartbeatIntervalMinutes < 1 || body.heartbeatIntervalMinutes > 1440)) return NextResponse.json({ error: "heartbeat interval must be 1–1440 minutes" }, { status: 400 });
   let found = false;
   let updated: AgentItem | undefined;
   await mutateStore((s) => {
@@ -74,6 +78,8 @@ export async function PATCH(req: NextRequest) {
             .map((t: string) => t.trim())
             .filter(Boolean);
     }
+    if (body.instructions != null) a.instructions = String(body.instructions).trim();
+    if (body.heartbeatIntervalMinutes != null) a.heartbeatIntervalMinutes = body.heartbeatIntervalMinutes;
     a.updatedAt = new Date().toISOString();
     updated = a;
   });
@@ -86,12 +92,15 @@ export async function DELETE(req: NextRequest) {
   const id = String(body.id || "").trim();
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
   let found = false;
+  let assigned = false;
   await mutateStore((s) => {
+    if (s.tasks.some(t => t.assigneeId === id)) { assigned = true; return; }
     const before = s.agents.length;
     s.agents = s.agents.filter((a) => a.id !== id);
     for (const a of s.agents) if (a.parentId === id) a.parentId = null;
     found = s.agents.length < before;
   });
+  if (assigned) return NextResponse.json({ error: "Unassign or reassign this agent’s tasks before removing it" }, { status: 409 });
   if (!found) return NextResponse.json({ error: "not found" }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
   const auth = requireApiKey(req);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const body = await req.json().catch(() => ({}));
+  if (body.heartbeatIntervalMinutes != null && (!Number.isInteger(body.heartbeatIntervalMinutes) || body.heartbeatIntervalMinutes < 1 || body.heartbeatIntervalMinutes > 1440)) return NextResponse.json({ error: "heartbeat interval must be 1–1440 minutes" }, { status: 400 });
   const name = String(body.name || "").trim();
   if (!name) return NextResponse.json({ error: "name required" }, { status: 400 });
   const type = (TYPES.includes(body.type) ? body.type : "agent") as AgentType;
@@ -48,6 +49,8 @@ export async function POST(req: NextRequest) {
       tags: Array.isArray(body.tags) ? body.tags.map(String) : [],
       createdAt: now,
       updatedAt: now,
+      instructions: String(body.instructions || "").trim(),
+      heartbeatIntervalMinutes: body.heartbeatIntervalMinutes || 15,
       lastHeartbeat: null,
       lastActivity: null,
       lastActivityText: null,
@@ -58,6 +61,8 @@ export async function POST(req: NextRequest) {
         ...prev,
         ...base,
         createdAt: prev.createdAt,
+        instructions: body.instructions === undefined ? prev.instructions : base.instructions,
+        heartbeatIntervalMinutes: body.heartbeatIntervalMinutes === undefined ? prev.heartbeatIntervalMinutes : base.heartbeatIntervalMinutes,
         lastHeartbeat: prev.lastHeartbeat,
         lastActivity: prev.lastActivity,
         lastActivityText: prev.lastActivityText,
@@ -79,12 +84,15 @@ export async function DELETE(req: NextRequest) {
   const id = String(body.id || req.nextUrl.searchParams.get("id") || "").trim();
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
   let found = false;
+  let assigned = false;
   await mutateStore((s) => {
+    if (s.tasks.some(t => t.assigneeId === id)) { assigned = true; return; }
     const before = s.agents.length;
     s.agents = s.agents.filter((a) => a.id !== id);
     for (const a of s.agents) if (a.parentId === id) a.parentId = null;
     found = s.agents.length < before;
   });
+  if (assigned) return NextResponse.json({ error: "Unassign or reassign this agent’s tasks before removing it" }, { status: 409 });
   if (!found) return NextResponse.json({ error: "not found" }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

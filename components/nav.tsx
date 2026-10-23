@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const items = [
-  ["/", "Overview", "◎"],
+  ["/", "Mission control", "◎"],
   ["/tasks", "Tasks", "▦"],
   ["/projects", "Projects", "◆"],
   ["/memory", "Memory", "✎"],
@@ -20,7 +20,7 @@ export function Nav() {
         const active = href === "/" ? path === "/" : path.startsWith(href);
         return (
           <Link key={href} href={href}
-            className={`flex items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2 text-sm transition ${active ? "bg-sky-500/15 text-sky-200" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"}`}>
+            className={`flex items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2 text-sm transition ${active ? "bg-indigo-50 font-semibold text-indigo-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"}`}>
             <span className="w-4 text-center opacity-80">{icon}</span>{label}
           </Link>
         );

@@ -1,130 +1,28 @@
 import Link from "next/link";
-import { Badge, Card, Empty, HealthBadge, Markdown, PageHeader, statusTone } from "@/components/ui";
+import { LiveRefresh } from "@/components/live-refresh";
+import { AgentCard } from "@/components/agent-card";
+import { Badge, Card, Empty, PageHeader, statusTone } from "@/components/ui";
 import { getStore } from "@/lib/data/store";
-import { TASK_STATUSES } from "@/lib/data/types";
-import { allHealth, googleCalendar } from "@/lib/integrations";
-import { renderMarkdown } from "@/lib/markdown";
-import { formatDate, formatDateTime, todayInTz, TZ_LABEL } from "@/lib/time";
-import { getVault } from "@/lib/vault/source";
-
+import { agentHealth } from "@/lib/data/lifecycle";
+import { TASK_LABELS, TASK_STATUSES } from "@/lib/data/types";
+import { formatDateTime, formatDate, todayInTz } from "@/lib/time";
 export const dynamic = "force-dynamic";
-
 export default async function Overview() {
-  const [store, vault, health, cal] = await Promise.all([getStore(), getVault(), allHealth(), googleCalendar.fetch()]);
-  const ts = store.tasks;
-  const bots = store.agents.filter((a) => !a.parentId || a.type !== "sub-agent");
-  const logs = [...store.logs].sort((a, b) => b.date.localeCompare(a.date));
-  const today = todayInTz();
-  const todayLog = logs.find((l) => l.date === today);
-  const shownLog = todayLog || logs[0];
-  const blocked = ts.filter((t) => t.status === "blocked");
-  const counts = TASK_STATUSES.map((s) => ({ s, n: ts.filter((t) => t.status === s).length }));
-  const summary = shownLog ? (shownLog.body.match(/##\s+Summary\n([\s\S]*?)(?=\n## |\n### |$)/i)?.[1] || shownLog.body).slice(0, 800) : "";
-
-  return (
-    <>
-      <PageHeader title="Overview" subtitle={`Today is ${formatDate(today)} (${TZ_LABEL}). Live data from Blob + connected integrations.`} />
-
-      <div className="grid gap-4 md:grid-cols-3">
-        {bots.slice(0, 9).map((b) => {
-          const children = store.agents.filter((c) => c.parentId === b.id);
-          return (
-            <Link key={b.id} href="/bots" className="group rounded-2xl border border-slate-800 bg-slate-900/50 p-5 hover:border-sky-500/40">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h3 className="font-semibold text-white group-hover:text-sky-200">{b.name}</h3>
-                  <p className="text-sm text-slate-400">{b.role || b.platform}</p>
-                </div>
-                <Badge tone={b.status.toLowerCase().includes("block") ? "red" : "green"}>{b.status}</Badge>
-              </div>
-              <p className="mt-2 text-xs text-slate-500">{b.type} · {b.platform}{children.length ? ` · ${children.length} sub-agent(s)` : ""}</p>
-              <div className="mt-3 border-t border-slate-800 pt-3 text-sm">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Last activity</div>
-                {b.lastActivityText ? (
-                  <p className="mt-1 line-clamp-3 text-slate-300">
-                    <span className="text-slate-500">{b.lastActivity ? formatDateTime(b.lastActivity) : ""}:</span> {b.lastActivityText}
-                  </p>
-                ) : (
-                  <p className="mt-1 text-slate-500">No activity yet.</p>
-                )}
-              </div>
-            </Link>
-          );
-        })}
-      </div>
-
-      <div className="mt-4 grid gap-4 lg:grid-cols-3">
-        <Card title="Tasks by status" action={<Link href="/tasks" className="text-xs text-sky-300">Board →</Link>}>
-          <div className="grid grid-cols-4 gap-2">
-            {counts.map(({ s, n }) => (
-              <Link key={s} href="/tasks" className="rounded-xl bg-slate-950/60 p-3 text-center">
-                <div className="text-2xl font-semibold text-white">{n}</div>
-                <Badge tone={statusTone(s)}>{s}</Badge>
-              </Link>
-            ))}
-          </div>
-          <p className="mt-3 text-xs text-slate-500">{ts.length} tasks in store.</p>
-        </Card>
-
-        <Card title={`Blocked (${blocked.length})`}>
-          {blocked.length === 0 ? (
-            <Empty>Nothing blocked.</Empty>
-          ) : (
-            <ul className="space-y-3">
-              {blocked.map((t) => (
-                <li key={t.id} className="rounded-lg border border-rose-500/20 bg-rose-500/5 p-3">
-                  <Link href="/tasks" className="font-medium text-rose-200 hover:underline">{t.title}</Link>
-                  <p className="mt-1 text-sm text-slate-400">{t.body || "No notes."}</p>
-                  <p className="mt-1 text-xs text-slate-500">Owner: {t.owners.join(", ") || "—"} · Project: {t.project || "—"}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card title="Upcoming calendar slot">
-          {cal.ok ? (
-            cal.data.length === 0 ? (
-              <Empty>No upcoming events.</Empty>
-            ) : (
-              <ul className="space-y-2">
-                {cal.data.slice(0, 3).map((e, i) => (
-                  <li key={e.id} className={i === 0 ? "rounded-lg bg-sky-500/10 p-3" : "px-3"}>
-                    <div className={i === 0 ? "font-medium text-white" : "text-sm text-slate-300"}>{e.summary}</div>
-                    <div className="text-xs text-slate-400">{e.allDay ? `${formatDate(e.start)} (all day)` : formatDateTime(e.start)}</div>
-                  </li>
-                ))}
-              </ul>
-            )
-          ) : (
-            <div className="text-sm text-slate-400">
-              <HealthBadge status={cal.reason === "error" ? "error" : "not_configured"} />
-              <p className="mt-2">{cal.reason === "error" ? cal.message : "Google Calendar is not connected, so no calendar data is shown."}</p>
-              <Link href="/integrations#google-calendar" className="mt-2 inline-block text-xs text-sky-300">Setup steps →</Link>
-            </div>
-          )}
-        </Card>
-      </div>
-
-      <div className="mt-4 grid gap-4 lg:grid-cols-3">
-        <Card
-          className="lg:col-span-2"
-          title={shownLog ? (todayLog ? `Today's log · ${shownLog.date}` : `Latest log · ${shownLog.date}`) : "Today's log"}
-          action={<Link href="/memory" className="text-xs text-sky-300">Memory →</Link>}
-        >
-          {shownLog ? <Markdown html={renderMarkdown(summary, vault.notes)} className="prose-sm" /> : <Empty>No daily logs yet.</Empty>}
-        </Card>
-        <Card title="Integration health" action={<Link href="/integrations" className="text-xs text-sky-300">Details →</Link>}>
-          <ul className="space-y-2">
-            {health.map(({ adapter, health: h }) => (
-              <li key={adapter.id} className="flex items-center justify-between gap-2 text-sm">
-                <Link href={`/integrations#${adapter.id}`} className="text-slate-300 hover:text-white">{adapter.name}</Link>
-                <HealthBadge status={h.status} />
-              </li>
-            ))}
-          </ul>
-        </Card>
-      </div>
-    </>
-  );
+  const store = await getStore();
+  const online = store.agents.filter(a => agentHealth(a, store.tasks).online).length;
+  const active = store.tasks.filter(t => t.status === "doing");
+  const blocked = store.tasks.filter(t => t.status === "blocked");
+  const review = store.tasks.filter(t => t.status === "review");
+  return <><LiveRefresh /><PageHeader title="Mission control" subtitle={`${formatDate(todayInTz())} · Your team’s work, at a glance.`}><Link href="/tasks#new-task" className="primary-button">＋ New task</Link></PageHeader>
+    <div className="mb-8 grid grid-cols-2 gap-4 xl:grid-cols-4">{[
+      { label: "Agents online", value: online, detail: `${store.agents.length} agents in your team`, href: "/bots", color: "text-emerald-600" },
+      { label: "In progress", value: active.length, detail: "Tasks being worked on", href: "/tasks?status=doing", color: "text-indigo-600" },
+      { label: "Needs attention", value: blocked.length, detail: "Blocked tasks to unblock", href: "/tasks?status=blocked", color: "text-rose-600" },
+      { label: "Awaiting review", value: review.length, detail: "Deliverables ready for you", href: "/tasks?status=review", color: "text-amber-600" },
+    ].map(m => <Link key={m.label} href={m.href} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-medium text-slate-500">{m.label}</p><p className={`my-2 text-4xl font-semibold tracking-tight ${m.color}`}>{m.value}</p><p className="text-xs text-slate-400">{m.detail}</p></Link>)}</div>
+    <div className="mb-8 grid gap-6 xl:grid-cols-3"><div className="space-y-6 xl:col-span-2"><Card title="Work pipeline" action={<Link href="/tasks" className="text-sm text-indigo-600">Open board →</Link>}><div className="grid grid-cols-3 gap-3 sm:grid-cols-6">{TASK_STATUSES.map(s => <Link href={`/tasks?status=${s}`} key={s} className="rounded-xl bg-slate-50 p-3"><p className="mb-2 text-2xl font-semibold">{store.tasks.filter(t => t.status === s).length}</p><Badge tone={statusTone(s)}>{TASK_LABELS[s]}</Badge></Link>)}</div></Card>
+    <Card title="Your agents" action={<Link href="/bots" className="text-sm text-indigo-600">View team →</Link>}><div className="grid gap-3 md:grid-cols-2">{store.agents.slice(0, 4).map(a => <AgentCard key={a.id} agent={a} tasks={store.tasks} />)}</div>{!store.agents.length && <Empty>Your team starts here. Create an agent to assign your first task.</Empty>}</Card></div>
+    <Card title="Needs your attention">{[...review, ...blocked].slice(0, 8).map(t => <Link key={t.id} href={`/tasks/${t.id}`} className="mb-3 block rounded-xl border border-slate-100 p-3 hover:bg-slate-50"><Badge tone={statusTone(t.status)}>{TASK_LABELS[t.status]}</Badge><p className="mt-2 text-sm font-medium">{t.title}</p><p className="mt-1 text-xs text-slate-500">{t.assigneeName || "Unassigned"} · {t.project || "No project"}</p></Link>)}{!review.length && !blocked.length && <Empty>You’re all caught up. No blocked tasks or pending reviews.</Empty>}</Card></div>
+    <Card title="Live activity" action={<span className="text-xs text-slate-400">Updates every 30 seconds</span>}>{!store.activities.length && <Empty>Activity will appear when your agents check in.</Empty>}<div className="divide-y divide-slate-100">{store.activities.slice(0, 10).map(a => <div key={a.id} className="flex gap-3 py-3"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-indigo-400" /><div className="min-w-0 flex-1"><p className="text-sm"><span className="font-semibold">{a.actor === "operator" ? "You" : store.agents.find(b => b.id === a.agentId)?.name || a.agentId}</span> <span className="text-slate-500">{a.kind.replaceAll("_", " ")}</span></p><p className="mt-1 break-words text-sm text-slate-600">{a.message}</p>{a.taskId && <Link href={`/tasks/${a.taskId}`} className="text-xs text-indigo-600">Open task →</Link>}</div><time className="shrink-0 text-xs text-slate-400">{formatDateTime(a.at)}</time></div>)}</div></Card>
+  </>;
 }

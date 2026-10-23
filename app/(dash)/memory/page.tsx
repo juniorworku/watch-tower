@@ -21,14 +21,14 @@ export default async function MemoryPage() {
       <LogCreateForm agents={agentNames} />
       <div className="grid gap-6 xl:grid-cols-5">
         <div className="xl:col-span-3">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Daily logs ({logs.length})</h2>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Daily logs ({logs.length})</h2>
           {logs.length === 0 && <Empty>No daily logs yet.</Empty>}
-          <ol className="relative space-y-6 border-l border-slate-800 pl-6">
+          <ol className="relative space-y-6 border-l border-slate-200 pl-6">
             {logs.map((l) => (
               <li key={l.id} id={l.date}>
                 <span className="absolute -left-[7px] mt-1.5 h-3 w-3 rounded-full bg-sky-400 ring-4 ring-slate-950" />
                 <div className="mb-2 flex items-baseline gap-3">
-                  <span className="font-semibold text-white">{formatDate(l.date)}</span>
+                  <span className="font-semibold text-slate-900">{formatDate(l.date)}</span>
                   <span className="text-xs text-slate-500">{l.id}</span>
                 </div>
                 <Card>
@@ -39,7 +39,7 @@ export default async function MemoryPage() {
           </ol>
         </div>
         <div className="xl:col-span-2">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Long-term memory</h2>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Long-term memory</h2>
           {lt ? (
             <Card>
               <Markdown html={renderMarkdown(lt.body, vault.notes)} className="prose-sm" />

@@ -1,5 +1,5 @@
-export type TaskStatus = "todo" | "doing" | "blocked" | "done";
-export const TASK_STATUSES: TaskStatus[] = ["todo", "doing", "blocked", "done"];
+export type TaskStatus = "todo" | "assigned" | "doing" | "blocked" | "review" | "done";
+export const TASK_STATUSES: TaskStatus[] = ["todo", "assigned", "doing", "blocked", "review", "done"];
 
 export type AgentType = "bot" | "agent" | "sub-agent";
 export type AgentPlatform =
@@ -13,10 +13,31 @@ export type AgentPlatform =
   | "Slack"
   | "custom";
 
+export const TASK_LABELS: Record<TaskStatus, string> = { todo: "Inbox", assigned: "Assigned", doing: "In progress", blocked: "Blocked", review: "Review", done: "Done" };
+export type Deliverable = {
+  id: string;
+  agentId: string;
+  title: string;
+  content: string;
+  url?: string;
+  submittedAt: string;
+  review: "pending" | "approved" | "changes_requested";
+  feedback?: string;
+  reviewedAt?: string;
+};
+
 export type TaskItem = {
   id: string;
   title: string;
   status: TaskStatus;
+  deliverables?: Deliverable[];
+  assigneeId?: string | null;
+  assigneeName?: string | null;
+  priority?: "low" | "normal" | "high" | "urgent";
+  source?: string;
+  currentRunId?: string | null;
+  lastStatusChangeAt?: string;
+  assignmentHistory?: { fromId: string | null; toId: string | null; at: string; reason: string }[];
   owners: string[];
   project: string;
   due: string;
@@ -59,6 +80,8 @@ export type AgentItem = {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+  instructions?: string;
+  heartbeatIntervalMinutes?: number;
   lastHeartbeat: string | null;
   lastActivity: string | null;
   lastActivityText: string | null;
@@ -67,7 +90,9 @@ export type AgentItem = {
 export type ActivityItem = {
   id: string;
   agentId: string;
-  kind: "heartbeat" | "activity" | "status";
+  taskId?: string;
+  actor?: "agent" | "operator";
+  kind: "heartbeat" | "activity" | "status" | "assigned" | "accepted" | "rejected" | "started" | "progress" | "blocked" | "completed" | "failed" | "re-assigned" | "submitted" | "approved" | "changes_requested" | "comment";
   message: string;
   meta?: Record<string, unknown>;
   at: string;

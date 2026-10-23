@@ -110,3 +110,36 @@ npm run build && npm start
 
 ## Deploy (Vercel)
 Project: `watch-tower-dashboard`, framework Next.js. Connect a Blob store (sets `BLOB_READ_WRITE_TOKEN`). Set `DASHBOARD_PASSWORD_HASH` and `WATCHTOWER_API_KEY` for Preview and Production.
+
+### Task assignment and bot reporting
+
+Use **Tasks** to assign/reassign one bot per task, filter by bot/owner/project/status,
+open task details, and review assignment history and task activity. Assignments reset
+the task to `todo` and clear its run ID. Existing `owners` remain human ownership
+labels; existing tasks without an assignee remain unassigned. Remove an agent only
+after unassigning/reassigning its tasks. Bot names link to workload and activity pages.
+These pages refresh every 30 seconds while visible.
+
+Bots use `Authorization: Bearer <WATCHTOWER_API_KEY>` for:
+
+- `GET /api/agents/{id}/tasks`: discover their assigned tasks.
+- `POST /api/agents/{id}/activity`: report `{ "taskId": "task-id", "kind": "started", "message": "Starting analysis", "currentRunId": "optional-run-id" }`.
+
+Task events: `accepted` (queued), `started` (doing), `progress` (no status change),
+`blocked`, `completed` (done), `failed` (blocked), and `rejected` (unassigns and queues).
+Task events require a task ID and message. Reports for another agent's task return
+409. Completed tasks must be reopened on the board. Assignments/reassignments are
+managed by the dashboard and recorded automatically. General `heartbeat`, `activity`,
+and `status` reports remain supported. The API key is shared across registered agents;
+it is not a separate credential per bot.
+
+Last seen is the newer of heartbeat and activity. Online means seen within ten
+minutes; workload is blocked if any assigned task is blocked, working if any is doing,
+and idle otherwise. Stale agents show offline even if work is still assigned.
+Completion rate covers currently assigned tasks, not lifetime throughput.
+
+Assignment does not launch a bot or call its webhook: the bot must poll for tasks
+and report progress. Blob persistence retains the existing per-process mutation
+queue; simultaneous writes from separate server instances are not transactional.
+
+Run lifecycle checks with `node --test tests/lifecycle.cjs` and `npm run typecheck`.

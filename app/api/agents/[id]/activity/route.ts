@@ -1,42 +1,55 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireApiKey } from "@/lib/data/api-auth";
 import { mutateStore, newId } from "@/lib/data/store";
+import { assignTask, LifecycleError, setTaskStatus, submitDeliverable } from "@/lib/data/lifecycle";
+import type { ActivityItem, TaskStatus } from "@/lib/data/types";
 
 export const runtime = "nodejs";
+const kinds = ["heartbeat", "activity", "status", "accepted", "rejected", "started", "progress", "blocked", "completed", "failed", "submitted"] as const;
+const states: Record<string, TaskStatus> = { accepted: "assigned", started: "doing", blocked: "blocked", failed: "blocked" };
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = requireApiKey(req);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { id } = await ctx.params;
   const body = await req.json().catch(() => ({}));
-  const kind = body.kind === "heartbeat" || body.kind === "status" ? body.kind : "activity";
+  const kind = body.kind || "activity";
+  if (!kinds.includes(kind)) return NextResponse.json({ error: "invalid event kind; assignments are managed through the task board" }, { status: 400 });
+  const taskId = body.taskId ? String(body.taskId) : undefined;
+  if (!["heartbeat", "activity", "status"].includes(kind) && !taskId) return NextResponse.json({ error: "taskId required" }, { status: 400 });
   const message = String(body.message || body.text || (kind === "heartbeat" ? "heartbeat" : "")).trim();
-  if (!message && kind !== "heartbeat") {
-    return NextResponse.json({ error: "message required" }, { status: 400 });
+  if (!message) return NextResponse.json({ error: "message required" }, { status: 400 });
+  let activity: ActivityItem | undefined;
+  try {
+    await mutateStore(s => {
+      const agent = s.agents.find(a => a.id === id);
+      if (!agent) throw new LifecycleError("agent not found", 404);
+      const task = taskId ? s.tasks.find(t => t.id === taskId) : undefined;
+      if (taskId && !task) throw new LifecycleError("task not found", 404);
+      if (task && task.assigneeId !== id) throw new LifecycleError("task is not assigned to this agent", 409);
+      if (task?.status === "done" && kind !== "heartbeat" && kind !== "activity") throw new LifecycleError("completed task must be reopened on the board", 409);
+      const now = new Date().toISOString();
+      if (task) {
+        if (task.status === "review" && !["heartbeat", "activity", "status"].includes(kind)) throw new LifecycleError("task is awaiting operator review", 409);
+        if (kind === "completed" || kind === "submitted") submitDeliverable(task, id, body.deliverable || {}, now);
+        if (kind === "rejected") assignTask(s, task, null, now, message);
+        else if (states[kind]) setTaskStatus(task, states[kind], now);
+        if (kind !== "rejected" && body.currentRunId) task.currentRunId = String(body.currentRunId);
+        task.updatedAt = now;
+      }
+      activity = { id: newId("act"), agentId: id, taskId, kind: kind === "completed" ? "submitted" : kind, actor: "agent", message, at: now,
+        meta: typeof body.meta === "object" && body.meta && !Array.isArray(body.meta) ? body.meta : undefined };
+      s.activities.unshift(activity!);
+      s.activities = s.activities.slice(0, 500);
+      if (kind === "heartbeat") agent.lastHeartbeat = now;
+      agent.lastActivity = now;
+      agent.lastActivityText = message.slice(0, 280);
+      if (body.status) agent.status = String(body.status).trim();
+      agent.updatedAt = now;
+    });
+  } catch (error) {
+    if (error instanceof LifecycleError) return NextResponse.json({ error: error.message }, { status: error.status });
+    throw error;
   }
-  const now = new Date().toISOString();
-  let found = false;
-  let activity;
-  await mutateStore((s) => {
-    const agent = s.agents.find((a) => a.id === id);
-    if (!agent) return;
-    found = true;
-    activity = {
-      id: newId("act"),
-      agentId: id,
-      kind: kind as "heartbeat" | "activity" | "status",
-      message: message || "heartbeat",
-      meta: typeof body.meta === "object" && body.meta ? body.meta : undefined,
-      at: now,
-    };
-    s.activities.unshift(activity);
-    s.activities = s.activities.slice(0, 500);
-    if (kind === "heartbeat") agent.lastHeartbeat = now;
-    agent.lastActivity = now;
-    agent.lastActivityText = activity.message.slice(0, 280);
-    if (body.status) agent.status = String(body.status).trim();
-    agent.updatedAt = now;
-  });
-  if (!found) return NextResponse.json({ error: "agent not found" }, { status: 404 });
   return NextResponse.json({ activity }, { status: 201 });
 }

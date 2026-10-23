@@ -14,7 +14,7 @@ function NoteList({ notes, empty }: { notes: Note[]; empty: string }) {
     <ul className="divide-y divide-slate-800">
       {notes.map((n) => (
         <li key={n.path} className="py-2">
-          <Link href={noteHref(n.path)} className="text-slate-200 hover:text-sky-200">{n.title}</Link>
+          <Link href={noteHref(n.path)} className="text-slate-800 hover:text-indigo-700">{n.title}</Link>
           <div className="text-xs text-slate-500">{n.path}</div>
         </li>
       ))}
@@ -38,13 +38,13 @@ export default async function DocsPage() {
           <NoteList notes={runWriteups} empty="No runs recorded yet." />
           {runsReadme && (
             <p className="mt-3 text-xs text-slate-500">
-              How runs are recorded: <Link className="text-sky-300" href={noteHref(runsReadme.path)}>{runsReadme.title}</Link>
+              How runs are recorded: <Link className="text-indigo-600" href={noteHref(runsReadme.path)}>{runsReadme.title}</Link>
             </p>
           )}
         </Card>
       </div>
       <div className="mt-4">
-        <Card title="Changelog" action={cl && <Link href={noteHref(cl.path)} className="text-xs text-sky-300">Open →</Link>}>
+        <Card title="Changelog" action={cl && <Link href={noteHref(cl.path)} className="text-xs text-indigo-600">Open →</Link>}>
           {cl ? <Markdown html={renderMarkdown(cl.body.replace(/^#\s+.+$/m, ""), vault.notes)} className="prose-sm" /> : <Empty>Docs/Changelog.md not found.</Empty>}
         </Card>
       </div>

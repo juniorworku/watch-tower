@@ -23,7 +23,7 @@ export default async function NotePage({ params }: { params: Promise<{ slug: str
       <PageHeader title={note.title}>
         {str(note.frontmatter.status) && <Badge tone="sky">{str(note.frontmatter.status)}</Badge>}
       </PageHeader>
-      {isBoard && <p className="mb-4 text-sm text-slate-400">This is the Obsidian Kanban board file. The interactive board in this app is built from task frontmatter: <Link className="text-sky-300" href="/tasks">Tasks</Link>.</p>}
+      {isBoard && <p className="mb-4 text-sm text-slate-500">This is the Obsidian Kanban board file. The interactive board in this app is built from task frontmatter: <Link className="text-indigo-600" href="/tasks">Tasks</Link>.</p>}
       <div className="grid gap-4 xl:grid-cols-4">
         <Card className="xl:col-span-3"><Markdown html={renderMarkdown(note.body.replace(/^#\s+.+$/m, ""), vault.notes)} /></Card>
         <div className="space-y-4">
@@ -31,14 +31,14 @@ export default async function NotePage({ params }: { params: Promise<{ slug: str
             <Card title="Properties">
               <dl className="space-y-1 text-sm">
                 {fm.map(([k, v]) => (
-                  <div key={k} className="flex justify-between gap-3"><dt className="text-slate-500">{k}</dt><dd className="text-right text-slate-300">{str(v) || "—"}</dd></div>
+                  <div key={k} className="flex justify-between gap-3"><dt className="text-slate-500">{k}</dt><dd className="text-right text-slate-700">{str(v) || "—"}</dd></div>
                 ))}
               </dl>
             </Card>
           )}
           <Card title={`Backlinks (${backlinks.length})`}>
             {backlinks.length === 0 ? <p className="text-sm text-slate-500">None</p> : (
-              <ul className="space-y-1 text-sm">{backlinks.map((b) => <li key={b.path}><Link className="text-sky-300 hover:text-sky-200" href={noteHref(b.path)}>{b.title}</Link></li>)}</ul>
+              <ul className="space-y-1 text-sm">{backlinks.map((b) => <li key={b.path}><Link className="text-indigo-600 hover:text-indigo-700" href={noteHref(b.path)}>{b.title}</Link></li>)}</ul>
             )}
           </Card>
         </div>
