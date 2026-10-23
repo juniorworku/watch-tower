@@ -95,6 +95,12 @@ backend-only. Frontend environment examples contain only BACKEND_URL. Root legac
 dotenv files are supported temporarily and were not edited. Docker excludes dotenv
 files from build contexts and injects the backend environment at runtime.
 
+The optional Vercel deployment uses two container services in one project and a
+frontend-to-backend `BACKEND_URL` binding. Vercel project variables are shared
+server-side across services, unlike Compose's separate service environments; they
+must never be exposed through `NEXT_PUBLIC_` names or client payloads. PostgreSQL
+is managed externally. See the README for setup and the deployment script.
+
 Sessions now have a signed server-verified expiry; old static v1 cookies are not
 accepted. Password hashes keep the previous scrypt format and parameters. Scoped
 agent credentials keep their SHA-256 hash format, preserving imported clients.

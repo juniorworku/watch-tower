@@ -173,3 +173,28 @@ catch-up/month-end EAT behavior, backup/import refusal, and read-only vault fall
   not interpolate it. Verified every parsed raw env value stayed identical.
   This changes quoting only; Docker credentials and PostgreSQL data are unchanged.
 - Plain `docker compose config --quiet` passes with no warnings.
+
+
+## Vercel deployment script — 2026-10-24
+
+- Added `npm run deploy:vercel`, an isolated source-staging deployment script,
+  `vercel.json`, two Vercel Dockerfiles, and `.vercelignore`. Both HTTP containers
+  deploy as one Vercel Services project with a frontend-to-backend URL binding.
+- PostgreSQL remains a managed backing service; the local Compose database/volume
+  is not uploaded. Production configuration must be supplied in the Vercel project.
+  No local records are automatically imported or replaced.
+- Added a local `--check` mode and tests for source exclusions, required production
+  settings, local-only database rejection, and non-exportable Secret placeholders.
+  The upload excludes local dotenv files, databases, and exports, and the pulled
+  Production configuration is deleted before deployment.
+- Vercel configuration matches the published schema constraints. Local script
+  checks and tests passed. Dockerfile build/runtime checks are recorded below.
+- Live Vercel deployment has not been run: no Vercel account or managed PostgreSQL
+  production configuration was supplied for this task. Services and Container
+  Runtime are beta features; README documents prerequisites and limits.
+- Both Vercel Dockerfiles built successfully. Temporary containers verified the
+  default port 80, backend readiness, internal HTTP routing, middleware redirects,
+  unauthorized API rejection, login/session forwarding, and dashboard/task rendering.
+  Temporary containers were removed afterwards; the existing Compose app remains
+  running. Vercel-specific binding injection and cloud routing still need live
+  verification after account/database setup.

@@ -1,0 +1,14 @@
+.git
+.vercel
+**/node_modules
+**/.next
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.env*
+**/*.tsbuildinfo
+**/*.sqlite3*
+data
+backend/data
+exports
+.secrets

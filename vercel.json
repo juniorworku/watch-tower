@@ -1,0 +1,22 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "frontend": {
+      "root": ".",
+      "runtime": "container",
+      "entrypoint": "frontend/Dockerfile.vercel",
+      "bindings": [
+        { "type": "service", "service": "backend", "format": "url", "env": "BACKEND_URL" }
+      ]
+    },
+    "backend": {
+      "root": ".",
+      "runtime": "container",
+      "entrypoint": "backend/Dockerfile.vercel"
+    }
+  },
+  "rewrites": [
+    { "source": "/health", "destination": { "service": "backend" } },
+    { "source": "/(.*)", "destination": { "service": "frontend" } }
+  ]
+}

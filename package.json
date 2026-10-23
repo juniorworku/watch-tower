@@ -14,6 +14,7 @@
     "test:backend": "python3 -m pytest backend/tests",
     "dev:backend": "python3 -m uvicorn backend.app.main:app --reload --port 8000",
     "snapshot": "node backend/scripts/snapshot-vault.mjs",
-    "automation": "node backend/runtime/run-automation.mjs"
+    "automation": "node backend/runtime/run-automation.mjs",
+    "deploy:vercel": "node tools/deploy-vercel.mjs"
   }
 }

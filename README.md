@@ -140,14 +140,92 @@ align `PUBLIC_APP_URL` in `backend/.env.docker`. Use HTTPS and
 
 ### Deployment notes
 
-This is no longer a frontend-only Vercel deployment. You can host Next.js separately,
-but FastAPI needs its own Python service and durable database storage. The frontend
-proxy avoids a browser cross-origin cookie/CORS setup. Backend authorization applies
-even when callers connect to FastAPI directly.
+Docker Compose remains the local deployment. For Vercel, use the deployment script
+below: it deploys both HTTP containers and connects them to managed PostgreSQL.
+The frontend proxy keeps browser requests on one origin. FastAPI independently
+authorizes requests.
 
 Agent execution still requires configuring the downloaded runner's local commands.
 Recurring jobs still require connected agent heartbeats or an authenticated cron
 worker. The worker now lives at `backend/runtime/run-automation.mjs`.
+
+## Deploy to Vercel in one command
+
+After the one-time account/database setup below, run:
+
+```bash
+npm run deploy:vercel
+```
+
+This deploys both Next.js and FastAPI as Docker-based HTTP services in a single
+Vercel production project. `vercel.json` connects the frontend to the backend using
+an internal `BACKEND_URL` service binding. Browser and agent API requests use the
+frontend proxy; `/health` goes directly to FastAPI. The script prints Vercel's
+resulting deployment URL.
+
+Vercel [Container Runtime](https://vercel.com/docs/functions/runtimes/container)
+and [Services](https://vercel.com/docs/services) are beta features. Vercel does not
+run Compose or persistent PostgreSQL containers: use a managed PostgreSQL database
+and keep Compose for local development.
+
+### One-time Vercel setup
+
+1. Install Node.js 22.12+ and the current CLI, then sign in:
+
+   ```bash
+   npm install -g vercel
+   vercel login
+   ```
+
+2. Create/select a Vercel project named `watchtower` with the repository root as
+   its root directory. Enable access to Services/Container Runtime if your account
+   requires it. Do not configure the project root as `frontend/`.
+3. Provision managed PostgreSQL and add these **Production** environment variables
+   in that project's Vercel settings:
+
+   | Variable | Value |
+   | --- | --- |
+   | `DATABASE_URL` | Hosted PostgreSQL connection URL, with the provider's required TLS settings |
+   | `DASHBOARD_PASSWORD_HASH` | Your production scrypt hash; store as a Secret. `DASHBOARD_PASSWORD` is also supported |
+   | `PUBLIC_APP_URL` | Your production HTTPS domain; store as readable Config |
+   | `WATCHTOWER_API_KEY` | Optional production master key for bot provisioning |
+   | `CRON_SECRET` | Required if an external scheduler calls `/api/cron` |
+
+   Add provider credentials only for integrations you intend to use. Do not set
+   `BACKEND_URL`; the service binding provides it. Container defaults set
+   `COOKIE_SECURE=1`, `WATCHTOWER_ENV_FILES=0`, and
+   `WATCHTOWER_SEED_FROM_SNAPSHOT=0`.
+4. Run `npm run deploy:vercel`. For a different project/team, set
+   `WATCHTOWER_VERCEL_PROJECT` and optionally `WATCHTOWER_VERCEL_SCOPE` on the first
+   run. The script remembers its project link under ignored
+   `.vercel/watchtower/project.json`, independently of older root project links.
+
+The deployment script stages only application source. Local dotenv files,
+PostgreSQL credentials, SQLite databases, exports, and dependency/build folders
+are excluded. It checks the configured Production variables without printing their
+values, deletes the temporary environment file before upload, and removes staging
+files afterwards. Non-exportable Vercel Secrets are checked for presence; their
+actual values are validated by the running service.
+
+Check the upload locally without logging in or deploying:
+
+```bash
+npm run deploy:vercel -- --check
+node --test tools/deploy-vercel.test.mjs
+```
+
+Cloud PostgreSQL starts empty unless you explicitly import data. The script does
+not provision a paid database, copy your local records, replace cloud data, or
+upload your local passwords. To migrate records, use the existing export/import
+CLI against the intended cloud database as a separate, explicit cutover step.
+Keep your Compose database and private backups until you verify the cloud app.
+
+Vercel project variables are shared by its services and remain server-side; never
+prefix backend credentials with `NEXT_PUBLIC_`. This deployment uses the Next.js
+container rather than a native Next.js service so middleware and server rendering
+run inside the same container with its runtime binding available. Container scale
+and request limits apply; unattended agents and recurring workers still require
+an appropriate external runner/scheduler.
 
 ## Local development
 
