@@ -1,0 +1,177 @@
+[
+  {
+    "id": "google-drive",
+    "name": "Google Drive (vault sync)",
+    "purpose": "Reads the live Watch Tower vault (Markdown) from the Drive folder instead of the bundled snapshot.",
+    "envVars": [
+      {
+        "name": "GOOGLE_CLIENT_ID",
+        "required": true,
+        "description": "OAuth 2.0 client ID (Google Cloud Console > APIs & Services > Credentials).",
+        "secret": false
+      },
+      {
+        "name": "GOOGLE_CLIENT_SECRET",
+        "required": true,
+        "description": "OAuth 2.0 client secret for that client.",
+        "secret": true
+      },
+      {
+        "name": "GOOGLE_REFRESH_TOKEN",
+        "required": true,
+        "description": "Refresh token for Junior's Google account, granted the read-only scopes listed below.",
+        "secret": true
+      },
+      {
+        "name": "GOOGLE_DRIVE_VAULT_FOLDER_ID",
+        "required": false,
+        "description": "Drive folder id of the vault. Defaults to 1CHIRqiewFlQF4JvzPgxXJDRSV2L-lXdl."
+      }
+    ],
+    "setupSteps": [
+      "In Google Cloud Console, create (or reuse) a project and enable the Google Drive API, Google Calendar API and Gmail API.",
+      "Configure the OAuth consent screen (External, Testing is fine) and add Junior's Google account as a test user.",
+      "Create an OAuth client ID of type 'Web application'. Add https://developers.google.com/oauthplayground as an authorised redirect URI.",
+      "In the OAuth 2.0 Playground (gear icon > 'Use your own OAuth credentials'), authorise these read-only scopes: https://www.googleapis.com/auth/drive.readonly, https://www.googleapis.com/auth/calendar.readonly, https://www.googleapis.com/auth/gmail.metadata \u2014 then exchange the code for a refresh token.",
+      "In the FastAPI backend environment, set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN (Preview and/or Production), then restart the backend.",
+      "Optional: set GOOGLE_DRIVE_VAULT_FOLDER_ID if the vault folder moves."
+    ]
+  },
+  {
+    "id": "notion",
+    "name": "Notion (reading log)",
+    "purpose": "Reads Junior's reading log (a database or page) for the Morning Brief. The page is still to be identified (see the blocked task).",
+    "envVars": [
+      {
+        "name": "NOTION_TOKEN",
+        "required": true,
+        "description": "Internal integration secret (Notion > Settings > Connections > Develop or manage integrations).",
+        "secret": true
+      },
+      {
+        "name": "NOTION_READING_LOG_ID",
+        "required": true,
+        "description": "ID of the reading log database or page (the 32-char id in its URL)."
+      }
+    ],
+    "setupSteps": [
+      "Go to https://www.notion.so/profile/integrations and create an internal integration with 'Read content' capability only.",
+      "Copy the integration secret into NOTION_TOKEN.",
+      "Open the reading log in Notion, choose \u2022\u2022\u2022 > Connections > add the integration, so it can read that page/database.",
+      "Copy the 32-character id from the reading log URL into NOTION_READING_LOG_ID.",
+      "Set both in the FastAPI backend environment and restart it."
+    ]
+  },
+  {
+    "id": "slack",
+    "name": "Slack (Cosmos AI workspace)",
+    "purpose": "Confirms the bot can see the Cosmos AI workspace and, optionally, shows the latest messages from one channel.",
+    "envVars": [
+      {
+        "name": "SLACK_BOT_TOKEN",
+        "required": true,
+        "description": "Bot User OAuth token (xoxb-\u2026) of a Slack app installed in the Cosmos AI workspace.",
+        "secret": true
+      },
+      {
+        "name": "SLACK_CHANNEL_ID",
+        "required": false,
+        "description": "Optional channel id (C\u2026) to show recent messages from. Needs channels:history and the bot invited to the channel."
+      }
+    ],
+    "setupSteps": [
+      "Create a Slack app at https://api.slack.com/apps (From scratch) in the Cosmos AI workspace.",
+      "Under OAuth & Permissions add read-only bot scopes: team:read, channels:read, and (optional) channels:history.",
+      "Install the app to the workspace and copy the Bot User OAuth Token into SLACK_BOT_TOKEN.",
+      "Optional: invite the bot to a channel (/invite @yourapp) and set SLACK_CHANNEL_ID.",
+      "Set these variables in the FastAPI backend environment and restart it."
+    ]
+  },
+  {
+    "id": "google-calendar",
+    "name": "Google Calendar",
+    "purpose": "Shows Junior's next upcoming calendar slots on the Overview.",
+    "envVars": [
+      {
+        "name": "GOOGLE_CLIENT_ID",
+        "required": true,
+        "description": "OAuth 2.0 client ID (Google Cloud Console > APIs & Services > Credentials).",
+        "secret": false
+      },
+      {
+        "name": "GOOGLE_CLIENT_SECRET",
+        "required": true,
+        "description": "OAuth 2.0 client secret for that client.",
+        "secret": true
+      },
+      {
+        "name": "GOOGLE_REFRESH_TOKEN",
+        "required": true,
+        "description": "Refresh token for Junior's Google account, granted the read-only scopes listed below.",
+        "secret": true
+      },
+      {
+        "name": "GOOGLE_CALENDAR_ID",
+        "required": false,
+        "description": "Calendar to read. Defaults to 'primary'."
+      }
+    ],
+    "setupSteps": [
+      "In Google Cloud Console, create (or reuse) a project and enable the Google Drive API, Google Calendar API and Gmail API.",
+      "Configure the OAuth consent screen (External, Testing is fine) and add Junior's Google account as a test user.",
+      "Create an OAuth client ID of type 'Web application'. Add https://developers.google.com/oauthplayground as an authorised redirect URI.",
+      "In the OAuth 2.0 Playground (gear icon > 'Use your own OAuth credentials'), authorise these read-only scopes: https://www.googleapis.com/auth/drive.readonly, https://www.googleapis.com/auth/calendar.readonly, https://www.googleapis.com/auth/gmail.metadata \u2014 then exchange the code for a refresh token.",
+      "In the FastAPI backend environment, set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN (Preview and/or Production), then restart the backend.",
+      "Optional: set GOOGLE_CALENDAR_ID to read a calendar other than primary."
+    ]
+  },
+  {
+    "id": "gmail",
+    "name": "Gmail",
+    "purpose": "Inbox counts only (unread / total), via the metadata scope. No message bodies are read.",
+    "envVars": [
+      {
+        "name": "GOOGLE_CLIENT_ID",
+        "required": true,
+        "description": "OAuth 2.0 client ID (Google Cloud Console > APIs & Services > Credentials).",
+        "secret": false
+      },
+      {
+        "name": "GOOGLE_CLIENT_SECRET",
+        "required": true,
+        "description": "OAuth 2.0 client secret for that client.",
+        "secret": true
+      },
+      {
+        "name": "GOOGLE_REFRESH_TOKEN",
+        "required": true,
+        "description": "Refresh token for Junior's Google account, granted the read-only scopes listed below.",
+        "secret": true
+      }
+    ],
+    "setupSteps": [
+      "In Google Cloud Console, create (or reuse) a project and enable the Google Drive API, Google Calendar API and Gmail API.",
+      "Configure the OAuth consent screen (External, Testing is fine) and add Junior's Google account as a test user.",
+      "Create an OAuth client ID of type 'Web application'. Add https://developers.google.com/oauthplayground as an authorised redirect URI.",
+      "In the OAuth 2.0 Playground (gear icon > 'Use your own OAuth credentials'), authorise these read-only scopes: https://www.googleapis.com/auth/drive.readonly, https://www.googleapis.com/auth/calendar.readonly, https://www.googleapis.com/auth/gmail.metadata \u2014 then exchange the code for a refresh token.",
+      "In the FastAPI backend environment, set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN (Preview and/or Production), then restart the backend."
+    ]
+  },
+  {
+    "id": "obsidian",
+    "name": "Obsidian (vault Markdown)",
+    "purpose": "The vault itself is the source of truth. Read from the live Google Drive folder when Drive is connected, otherwise from the snapshot bundled at build time.",
+    "envVars": [
+      {
+        "name": "VAULT_SOURCE_DIR",
+        "required": false,
+        "description": "Optional local vault source for npm run snapshot. The backend uses its bundled snapshot when live Drive is unavailable."
+      }
+    ],
+    "setupSteps": [
+      "Nothing to configure for the bundled snapshot: it is refreshed every time `npm run snapshot` runs on a machine that has the vault at ../watchtower (or VAULT_SOURCE_DIR).",
+      "To read the live vault instead, connect Google Drive (see above). The app then reads the Drive folder on each request (cached for 60 seconds).",
+      "Open the same folder in Obsidian via Google Drive for desktop to edit it (see the vault README)."
+    ]
+  }
+]

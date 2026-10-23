@@ -1,0 +1,5 @@
+/** Static navigation failure screen; no backend data or credentials are embedded. */
+export function statusPage(title: string, message: string) {
+  const escape = (value: string) => value.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)} · Watch Tower</title></head><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#f8fafc;color:#1e293b;font-family:system-ui,sans-serif"><main style="max-width:430px;margin:24px;padding:32px;border:1px solid #e2e8f0;border-radius:16px;background:white"><h1 style="font-size:24px">${escape(title)}</h1><p style="font-size:14px;line-height:1.8;color:#64748b">${escape(message)}</p><a href="/" style="display:inline-block;margin-top:12px;padding:10px 16px;background:#4f46e5;color:white;border-radius:8px;text-decoration:none">Try again</a></main></body></html>`;
+}

@@ -4,3 +4,17 @@ node_modules
 .next
 *.tsbuildinfo
 .secrets/
+
+# Python backend and persistent local state
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+backend/data/
+*.sqlite3*
+# Private exports and runtime credentials
+exports/
+watchtower-agent.json
+watchtower-setup.mjs
+!backend/.env.example
+!frontend/.env.example
