@@ -12,4 +12,6 @@ def tick(request: Request):
         raise DomainError("CRON_SECRET is not configured", 503)
     if not hmac.compare_digest(expected, bearer(request)):
         raise DomainError("Unauthorized", 401)
-    return request.app.state.repository.mutate(tick_schedules)
+    from ..channels import dispatch
+    schedules = request.app.state.repository.mutate(tick_schedules)
+    return {**schedules, "deliveries": dispatch(request.app.state.repository, request.app.state.settings)}

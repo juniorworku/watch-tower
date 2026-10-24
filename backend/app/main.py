@@ -11,7 +11,7 @@ from .domain import DomainError
 from .integrations import Integrations
 from .repository import create_repository
 from .seed import build_seed, empty_state
-from .routers import agents, cron, dashboard, integrations, session
+from .routers import agents, cron, dashboard, integrations, session, channels
 
 
 def create_app(settings=None, repository=None):
@@ -65,7 +65,7 @@ def create_app(settings=None, repository=None):
         repository.read()
         return {"status": "ok", "service": "watchtower-backend"}
 
-    for router in (session.router, agents.router, cron.router, dashboard.router, integrations.router):
+    for router in (session.router, agents.router, cron.router, dashboard.router, integrations.router, channels.router):
         app.include_router(router)
     return app
 

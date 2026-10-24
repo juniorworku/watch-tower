@@ -143,7 +143,7 @@ export function ProjectEditForm({ id, name, status, archived, owner }: { id: str
   );
 }
 
-const PLATFORMS = ["Grok Bot", "OpenAI/ChatGPT", "Claude", "Cursor", "n8n", "Zapier", "Make", "Slack", "custom"];
+const PLATFORMS = ["Grok Bot", "OpenAI/ChatGPT", "Claude", "Cursor", "n8n", "Zapier", "Make", "Telegram", "WhatsApp", "Slack", "custom"];
 
 export function AgentRegistryForm({ parents }: { parents: { id: string; name: string }[] }) {
   const router = useRouter();
@@ -165,7 +165,9 @@ export function AgentRegistryForm({ parents }: { parents: { id: string; name: st
         setErr((await res.json().catch(() => ({}))).error || "Failed");
         return;
       }
+      const created = await res.json();
       form.reset();
+      if (["Telegram", "WhatsApp", "Slack"].includes(String(fd.get("platform"))) && created.agent?.id) router.push(`/bots/${created.agent.id}?tab=connect`);
       router.refresh();
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Could not save. Please try again.");

@@ -83,7 +83,7 @@ class Repository:
     def import_state(self, state, replace=False):
         validated = validate_state(state)
         def import_document(current):
-            if not replace and any(current[k] for k in COLLECTIONS):
+            if not replace and any(current.get(k) for k in COLLECTIONS):
                 raise DomainError("Database contains records; back it up and use --replace to import", 409)
             current.clear()
             current.update(validated)

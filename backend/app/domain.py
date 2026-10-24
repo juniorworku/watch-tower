@@ -9,7 +9,7 @@ from uuid import uuid4
 EAT = timezone(timedelta(hours=3))
 STATUSES = {"todo", "assigned", "doing", "blocked", "review", "done"}
 PRIORITIES = {"urgent": 0, "high": 1, "normal": 2, "low": 3}
-COLLECTIONS = ("tasks", "projects", "agents", "activities", "logs", "templates", "schedules", "messages")
+COLLECTIONS = ("tasks", "projects", "agents", "activities", "logs", "templates", "schedules", "messages", "outbox", "channelReceipts")
 
 class DomainError(Exception):
     def __init__(self, message, status=400):
@@ -65,6 +65,9 @@ def event(store, agent_id, kind, message, task_id=None, actor="agent", at=None, 
     if meta is not None:
         value["meta"] = meta
     store["activities"].insert(0, value)
+    if task_id:
+        from .channels import notify_task
+        notify_task(store, value)
     return value
 
 
@@ -79,10 +82,13 @@ def assign(store, task, agent_id, now, reason="Dashboard assignment", actor="ope
     previous = task.get("assigneeId")
     if previous == agent_id:
         return
+    for delivery in store.get("outbox", []):
+        if delivery.get("taskId") == task["id"] and delivery["agentId"] == previous and delivery["status"] == "queued":
+            delivery.update(status="cancelled", lastError="Task reassigned")
     task.update(assigneeId=agent_id, assigneeName=agent["name"] if agent else None, currentRunId=None, claimedAt=None)
     task.setdefault("assignmentHistory", []).append({"fromId": previous, "toId": agent_id, "at": now, "reason": reason})
     set_status(task, "assigned" if agent else "todo", now)
-    event(store, agent_id or previous, "re-assigned" if previous else "assigned", f"{reason}: {agent['name'] if agent else 'unassigned'}", task["id"], actor, now)
+    event(store, agent_id or previous, "re-assigned" if previous else "assigned", f"{reason}: {agent['name'] if agent else 'unassigned'}", task["id"], actor, now, meta={"taskTitle": task["title"]})
 
 
 def ready(store, task):

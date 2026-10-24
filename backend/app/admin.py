@@ -155,13 +155,17 @@ def send_message(store, body):
         raise DomainError("message must contain 1–20000 characters")
     message = {"id": uid("message"), "agentId": body["agentId"], "text": text, "createdAt": now_iso()}
     store["messages"].append(message)
+    from .channels import queue_text
+    queued = queue_text(store, body["agentId"], f"{text}\n\nReply with /reply {message['id']} your response", message_id=message["id"])
+    if queued:
+        message.update(provider=queued[0]["provider"], deliveryStatus="queued", direction="outbound")
     return message
 
 
 def answer_message(store, agent_id, body):
     agent = find(store, "agents", agent_id)
     message = find(store, "messages", body.get("messageId"))
-    if message["agentId"] != agent_id:
+    if message["agentId"] != agent_id or message.get("direction") == "inbound":
         raise DomainError("message not found", 404)
     now = now_iso()
     message.setdefault("deliveredAt", now)

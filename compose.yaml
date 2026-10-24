@@ -32,6 +32,19 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
+  channel-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "-m", "backend.app.channel_worker"]
+    env_file:
+      - path: backend/.env.docker
+    environment:
+      WATCHTOWER_ENV_FILES: "0"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
   frontend:
     build:
       context: .

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import secrets
 from time import perf_counter
-from fastapi import APIRouter, Body, Depends, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from ..auth import dashboard
 from .. import admin
@@ -16,6 +16,12 @@ router = APIRouter(prefix="/api", tags=["dashboard"], dependencies=[Depends(dash
 
 def repo(request):
     return request.app.state.repository
+
+
+def queue_delivery(request, background_tasks, agent_id):
+    from ..channels import deliver_after_write
+    if agent_id:
+        background_tasks.add_task(deliver_after_write, repo(request), request.app.state.settings, agent_id)
 
 @router.get("/state")
 def state(request: Request, response: Response):
@@ -31,12 +37,16 @@ def tasks(request: Request):
     return {"tasks": repo(request).read()["tasks"]}
 
 @router.post("/tasks", status_code=201)
-def add_task(request: Request, body: TaskCreate):
-    return {"task": repo(request).mutate(lambda s: create_task(s, body.model_dump(exclude_unset=True)))}
+def add_task(request: Request, body: TaskCreate, background_tasks: BackgroundTasks):
+    task = repo(request).mutate(lambda s: create_task(s, body.model_dump(exclude_unset=True)))
+    queue_delivery(request, background_tasks, task.get("assigneeId"))
+    return {"task": task}
 
 @router.patch("/tasks")
-def edit_task(request: Request, body: TaskPatch):
-    return {"task": repo(request).mutate(lambda s: update_task(s, body.model_dump(exclude_unset=True)))}
+def edit_task(request: Request, body: TaskPatch, background_tasks: BackgroundTasks):
+    task = repo(request).mutate(lambda s: update_task(s, body.model_dump(exclude_unset=True)))
+    queue_delivery(request, background_tasks, task.get("assigneeId"))
+    return {"task": task}
 
 @router.get("/registry")
 def agents(request: Request):
@@ -82,8 +92,11 @@ def automate(request: Request, body: dict = Body(...)):
     return {"result": repo(request).mutate(lambda s: admin.automation(s, body))}
 
 @router.post("/messages", status_code=201)
-def send_message(request: Request, body: MessageInput):
-    return {"message": repo(request).mutate(lambda s: admin.send_message(s, body.model_dump()))}
+def send_message(request: Request, body: MessageInput, background_tasks: BackgroundTasks):
+    message = repo(request).mutate(lambda s: admin.send_message(s, body.model_dump()))
+    if message.get("provider"):
+        queue_delivery(request, background_tasks, body.agentId)
+    return {"message": message}
 
 @router.get("/logs")
 def logs(request: Request):

@@ -10,6 +10,8 @@ export type AgentPlatform =
   | "n8n"
   | "Zapier"
   | "Make"
+  | "Telegram"
+  | "WhatsApp"
   | "Slack"
   | "custom";
 
@@ -77,6 +79,7 @@ export type LogEntry = {
 };
 
 export type AgentItem = {
+  connection?: ChannelConnection;
   id: string;
   name: string;
   platform: AgentPlatform | string;
@@ -129,6 +132,8 @@ export type RecurringSchedule = {
 export type AgentMessage = {
   id: string; agentId: string; text: string; createdAt: string;
   deliveredAt?: string; reply?: string; repliedAt?: string;
+  direction?: "inbound" | "outbound"; provider?: string; sender?: string;
+  deliveryStatus?: "queued" | "sending" | "sent" | "delivered" | "read" | "failed" | "unknown" | "cancelled";
 };
 export type AgentHealth = {
   lastSeenAt: string | null; online: boolean; assigned: TaskItem[]; active: TaskItem[];
@@ -155,3 +160,16 @@ export type StoreData = {
   activities: ActivityItem[];
 };
 
+
+export type ChannelConnection = {
+  id: string; provider: "telegram" | "slack" | "whatsapp"; destination: string;
+  allowedSenders: string[]; tokenEnv: string; secretEnv: string; enabled: boolean;
+  workspaceId?: string; accountId?: string; apiVersion?: string; verifyTokenEnv?: string;
+  templateName?: string; templateLanguage?: string; updatedAt: string;
+  lastInboundAt?: string; lastOutboundAt?: string; lastDeliveryStatus?: string; lastError?: string;
+};
+export type ChannelDelivery = {
+  id: string; agentId: string; provider: string; text: string;
+  status: "queued" | "sending" | "sent" | "failed" | "unknown" | "cancelled";
+  attempts: number; createdAt: string; lastError?: string; providerStatus?: string;
+};

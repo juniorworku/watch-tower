@@ -52,7 +52,7 @@ def delegate(request: Request, agent_id: str, body: dict = Body(...)):
 
 @router.get("/{agent_id}/messages", dependencies=[Depends(auth.agent_auth)])
 def inbox(request: Request, agent_id: str):
-    return {"messages": [m for m in request.app.state.repository.read()["messages"] if m["agentId"] == agent_id and not m.get("repliedAt")]}
+    return {"messages": [m for m in request.app.state.repository.read()["messages"] if m["agentId"] == agent_id and m.get("direction") != "inbound" and not m.get("repliedAt")]}
 
 @router.post("/{agent_id}/messages", dependencies=[Depends(auth.agent_auth)])
 def answer(request: Request, agent_id: str, body: dict = Body(...)):

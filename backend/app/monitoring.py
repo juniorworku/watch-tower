@@ -45,7 +45,7 @@ def public_agent(agent):
 
 
 def dashboard_state(store):
-    state = deepcopy(store)
+    state = deepcopy({k: v for k, v in store.items() if k not in ("outbox", "channelReceipts")})
     state["agents"] = [public_agent(a) for a in state["agents"]]
     for agent in state["agents"]:
         agent["health"] = health(agent, state["tasks"])

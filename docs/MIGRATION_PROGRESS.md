@@ -412,3 +412,57 @@ catch-up/month-end EAT behavior, backup/import refusal, and read-only vault fall
 - Local median decreased from roughly 330ms to 74ms with the loading-boundary
   adjustment. Larger monitoring histories benefit from the separately measured
   aggregation speedup. No database records were changed by browser/API checks.
+
+
+## Telegram, WhatsApp and Slack channels — 2026-10-24
+
+- Added one optional messaging connection per agent, with provider/destination,
+  trusted sender IDs, Slack workspace / WhatsApp phone-number routing, and BOT_
+  environment-variable references. Credential values are not stored in state or
+  sent to the UI. Added Telegram and WhatsApp creation choices, post-create setup
+  navigation, platform filtering, channel health, delivery history and retry UI.
+- Added Telegram secret-header, Slack raw-body HMAC + timestamp, and WhatsApp
+  app-secret HMAC webhooks plus WhatsApp subscription verification. Events are
+  scoped to the configured chat/channel/account and allowed senders. Transactional
+  receipts deduplicate retries and Slack message/mention echoes.
+- Verified chat commands drive the existing accept/start/progress/block/reject/
+  submit lifecycle; submissions enter Review and dashboard operators approve or
+  request changes. Commands cannot approve work or alter another agent's tasks.
+  Native replies and explicit /reply commands connect chat to operator messages.
+- Added a durable transactional outbox for messages, assignments, comments,
+  reassignment and review feedback. Claims use leases; network sends run outside
+  DB locks. Rate limits defer delivery, ambiguous outcomes require an explicit
+  operator retry, and connection changes cancel unsent work for the old destination.
+  Long messages are chunked in order. WhatsApp signed receipts add delivered/read
+  state; other provider acceptance is labeled sent rather than delivered.
+- API writes attempt background dispatch. Docker now includes a five-second channel
+  worker; /api/cron also dispatches for externally scheduled hosted deployments.
+  Connect/Messages offer manual dispatch and failure inspection. Internal delivery
+  history/receipt collections are excluded from routine dashboard state responses.
+- Existing version-1 state remains compatible; new internal collections are optional
+  for legacy reads and default during imports. Existing task/runtime APIs remain.
+- Added docs/MESSAGING_CHANNELS.md, README setup links, and backend env examples.
+  Documented provider account/subscription setup, public HTTPS callbacks, Telegram
+  bot-to-bot restrictions, WhatsApp Business templates/window, Slack mention syntax,
+  durable hosting scheduler requirements and the continued need for a work runtime.
+- Checks: TypeScript and six frontend tests; four deployment-helper tests; 38 backend
+  tests (five PostgreSQL-only tests skipped in the plain run); all five real
+  PostgreSQL tests pass, including simultaneous delivery claims and duplicate receipt
+  handling. The exact service-local Vercel frontend image builds successfully.
+- Isolated Chrome workflow passed create/configure/assign/report/submit/review/
+  message/history using a disposable SQLite test API with mocked provider sends.
+  No real provider account was contacted for bot delivery verification.
+- Automatic review initially blocked worker startup because of potential existing
+  queued sends. Read-only inspection established zero connections, zero pending
+  deliveries and zero BOT_ credentials locally; production also had zero agents/
+  connections. Startup then passed review; the local API/frontend/DB/worker are
+  healthy. Existing local and production records were not changed by UI tests.
+- Deployment `dpl_2VDN4HcQmvdScr2veFHFHi99pEG8` is READY at
+  `https://watchtower-lyart.vercel.app`; the deploy helper's health/session/login
+  checks passed. Follow-up read-only checks verified channel-admin authentication,
+  registered channel/delivery/webhook routes, agents/messages/monitoring pages,
+  and internal queue/receipt filtering. No production agents were created for tests.
+- Slack and WhatsApp connection forms also passed isolated Chrome checks. Temporary
+  test containers were removed. Final local frontend/API/PostgreSQL/channel-worker
+  health checks pass. Live provider delivery awaits account credentials/webhooks;
+  unattended hosted retries require the documented protected cron scheduler.

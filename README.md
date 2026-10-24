@@ -15,12 +15,20 @@ docs/             Architecture, feature guide, and migration progress
 
 The existing task board, agents, project teams, reviews, templates, schedules,
 messages, monitoring, vault pages, and read-only integrations are retained.
-FastAPI is the sole owner of authentication, credentials, workflow decisions,
-persistence, and provider access. Next.js calls it over HTTP.
+FastAPI owns login, API authorization, workflow decisions, persistence, and provider
+access. Next.js calls it over HTTP and can verify shared signed sessions locally.
+
+## Messaging bots
+
+Telegram, WhatsApp Business Cloud API and Slack channels can connect to each agent
+from **Agents → Connect**. Assign work, receive progress, review deliverables, and
+exchange messages with delivery history. Provider credentials stay in backend
+`BOT_` environment variables. See [messaging setup and commands](docs/MESSAGING_CHANNELS.md)
+for provider subscriptions, worker/scheduler setup, and platform limitations.
 
 ## Docker deployment with PostgreSQL
 
-Docker Compose runs Next.js, FastAPI, and PostgreSQL 17. The database has a named
+Docker Compose runs Next.js, FastAPI, PostgreSQL 17, and the channel delivery worker. The database has a named
 volume; it is not exposed on a host port. The UI defaults to
 <http://localhost:3002> and the API to <http://127.0.0.1:8001/docs>, avoiding the
 existing development servers.

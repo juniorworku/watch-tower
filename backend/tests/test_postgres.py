@@ -93,3 +93,18 @@ class PostgresTests(unittest.TestCase):
         self.assertEqual(repository.pool.get_stats()["connections_num"], 1)
         repository.close()
         self.assertTrue(repository.pool.closed)
+
+    def test_channel_claims_and_receipts_are_transactional(self):
+        from backend.app.channels import claim_delivery, receive, save_connection
+        from backend.app.admin import send_message
+        agent = self.repository.mutate(lambda s: save_agent(s, {'name': 'Telegram worker'}))
+        config = self.repository.mutate(lambda s: save_connection(s, agent['id'], {'provider': 'telegram', 'destination': '123', 'allowedSenders': ['42'], 'tokenEnv': 'BOT_TOKEN', 'secretEnv': 'BOT_SECRET'}))
+        self.repository.mutate(lambda s: send_message(s, {'agentId': agent['id'], 'text': 'One notification'}))
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            claims = list(pool.map(lambda _: self.repository.mutate(claim_delivery), range(2)))
+        self.assertEqual(sum(c is not None for c in claims), 1)
+        item = {'id': 'event-1', 'sender': '42', 'text': '/heartbeat', 'replyTo': ''}
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            received = list(pool.map(lambda _: self.repository.mutate(lambda s: receive(s, agent['id'], config['id'], [item])), range(2)))
+        self.assertEqual(sorted(received), [0, 1])
+        self.assertEqual(len(self.repository.read()['channelReceipts']), 1)
