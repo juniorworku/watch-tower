@@ -1,12 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { backendGet } from "@/lib/api";
+import { dashboardSession } from "@/lib/session";
 import { Nav } from "@/components/nav";
 export const dynamic = "force-dynamic";
 export default async function DashLayout({ children }: { children: React.ReactNode }) {
-  // Runs alongside page data, rather than a sequential middleware network request.
-  // APIs authenticate independently on every navigation and mutation.
-  const session = await backendGet<{ configured: boolean; authenticated: boolean }>("/api/session");
+  // Verify locally when the shared server secret is available; APIs also authenticate.
+  const session = await dashboardSession();
   if (!session.configured) redirect("/locked");
   if (!session.authenticated) redirect("/login");
   return <div className="min-h-screen md:flex">

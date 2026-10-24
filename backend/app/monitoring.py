@@ -1,3 +1,4 @@
+from collections import Counter
 from copy import deepcopy
 from datetime import timedelta
 import re
@@ -28,8 +29,14 @@ def metrics(store, now=None):
     approvals = [a for a in store["activities"] if a["kind"] == "approved"]
     approved_ids = {a.get("taskId") for a in approvals}
     times = [a["at"] for a in approvals] + [t.get("lastStatusChangeAt", t["updatedAt"]) for t in store["tasks"] if t["status"] == "done" and t["id"] not in approved_ids]
-    trend = [{"day": day, "count": sum(date(at).astimezone(EAT).date().isoformat() == day for at in times)} for day in days]
-    heatmap = [{"day": day, "hours": [sum(date(a["at"]).astimezone(EAT).date().isoformat() == day and date(a["at"]).astimezone(EAT).hour == hour for a in store["activities"]) for hour in range(24)]} for day in days[7:]]
+    # Parse each timestamp once instead of rescanning every event for 168 cells.
+    completed_by_day = Counter(date(at).astimezone(EAT).date().isoformat() for at in times)
+    activity_by_hour = Counter()
+    for activity in store["activities"]:
+        local = date(activity["at"]).astimezone(EAT)
+        activity_by_hour[(local.date().isoformat(), local.hour)] += 1
+    trend = [{"day": day, "count": completed_by_day[day]} for day in days]
+    heatmap = [{"day": day, "hours": [activity_by_hour[(day, hour)] for hour in range(24)]} for day in days[7:]]
     return {"trend": trend, "heatmap": heatmap, "currentWeek": sum(d["count"] for d in trend[7:]), "previousWeek": sum(d["count"] for d in trend[:7]), "workload": [{"agent": a, **health(a, store["tasks"], iso(now))} for a in store["agents"]]}
 
 

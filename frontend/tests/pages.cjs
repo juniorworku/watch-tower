@@ -81,7 +81,7 @@ test('dashboard layout validates sessions even when a cookie is present', async 
   for (const session of [{ configured: true, authenticated: false }, { configured: false, authenticated: false }, { configured: true, authenticated: true }]) {
     const exports = {};
     new Function('exports', 'require', code)(exports, id => {
-      if (id === '@/lib/api') return { backendGet: async path => { assert.equal(path, '/api/session'); return session; } };
+      if (id === '@/lib/session') return { dashboardSession: async () => session };
       if (id === 'next/navigation') return { redirect: path => { throw new Error(`redirect:${path}`); } };
       if (id === 'next/link') return { default: () => null };
       if (id === '@/components/nav') return { Nav: () => null };
@@ -90,5 +90,49 @@ test('dashboard layout validates sessions even when a cookie is present', async 
     if (!session.configured) await assert.rejects(exports.default({ children: null }), /redirect:\/locked/);
     else if (!session.authenticated) await assert.rejects(exports.default({ children: null }), /redirect:\/login/);
     else assert.ok(await exports.default({ children: null }));
+  }
+});
+
+test('session signatures match FastAPI, reject tampering, expiry and password rotation', () => {
+  const { createHmac } = require('node:crypto');
+  const code = ts.transpileModule(fs.readFileSync('lib/session-token.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const exports = {};
+  new Function('exports', 'require', code)(exports, require);
+  const { validSessionToken, sessionSecret } = exports;
+  const now = 1792800000, secret = 'test-only-secret', nonce = 'a'.repeat(32);
+  const sign = expiry => {
+    const data = `v2.${expiry}.${nonce}`;
+    return `${data}.${createHmac('sha256', secret).update(data).digest('hex')}`;
+  };
+  // Minted by backend.app.auth.session_token with fixed nonce and expiry.
+  const pythonToken = 'v2.1792800060.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.a5fad2c2ee8dee828792d07119dbd9d2eeee99fcce87ffa231283ede4bc35a26';
+  assert.equal(sign(now + 60), pythonToken);
+  assert.equal(validSessionToken(pythonToken, secret, now), true);
+  assert.equal(validSessionToken(sign(now), secret, now), false);
+  assert.equal(validSessionToken(sign(now + 7 * 86400 + 61), secret, now), false);
+  assert.equal(validSessionToken(sign(now + 60), 'rotated', now), false);
+  assert.equal(validSessionToken(sign(now + 60).replace('v2.', 'v1.'), secret, now), false);
+  for (const token of ['', 'invalid', sign(now + 60) + '.extra', sign(now + 60).slice(0, -1), sign(now + 60).replace(nonce, 'b'.repeat(32))]) assert.equal(validSessionToken(token, secret, now), false);
+  assert.equal(sessionSecret({ DASHBOARD_PASSWORD: ' "pass" ' }), 'pass');
+  assert.equal(sessionSecret({ DASHBOARD_PASSWORD_HASH: ' hash ', DASHBOARD_PASSWORD: 'pass' }), 'hash');
+  assert.equal(sessionSecret({}), '');
+});
+
+test('server session verification skips HTTP when configured and falls back for isolated Compose', async () => {
+  const code = ts.transpileModule(fs.readFileSync('lib/session.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  for (const secret of ['', 'server-only-secret']) {
+    let calls = 0;
+    const exports = {};
+    new Function('exports', 'require', 'process', code)(exports, id => {
+      if (id === 'server-only') return {};
+      if (id === 'react') return { cache: fn => fn };
+      if (id === 'next/headers') return { cookies: async () => ({ get: () => ({ value: 'test-cookie' }) }) };
+      if (id === './api') return { backendGet: async path => { calls++; assert.equal(path, '/api/session'); return { configured: true, authenticated: true }; } };
+      if (id === './session-token') return { sessionSecret: env => env.DASHBOARD_PASSWORD || '', validSessionToken: (token, key) => { assert.equal(token, 'test-cookie'); assert.equal(key, secret); return false; } };
+      throw new Error(id);
+    }, { env: { DASHBOARD_PASSWORD: secret } });
+    const result = await exports.dashboardSession();
+    assert.equal(calls, secret ? 0 : 1);
+    assert.equal(result.authenticated, !secret);
   }
 });

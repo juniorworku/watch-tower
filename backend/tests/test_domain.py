@@ -86,3 +86,23 @@ def test_snapshot_seed_keeps_existing_record_shapes():
     assert seed["version"] == 1
     assert seed["agents"] and all("tags" in a for a in seed["agents"])
     assert all("owners" in t and "body" in t for t in seed["tasks"])
+
+
+def test_monitoring_buckets_offsets_and_approved_tasks_without_double_counting():
+    s = empty_state()
+    s['tasks'] = [
+        {'id': 'approved', 'status': 'done', 'updatedAt': '2026-10-23T22:00:00Z'},
+        {'id': 'legacy', 'status': 'done', 'updatedAt': '2026-10-23T20:00:00Z'},
+    ]
+    s['activities'] = [
+        {'id': 'a', 'kind': 'approved', 'taskId': 'approved', 'at': '2026-10-24T01:00:00+03:00'},
+        {'id': 'b', 'kind': 'progress', 'at': '2026-10-23T22:15:00Z'},
+        {'id': 'c', 'kind': 'heartbeat', 'at': '2026-10-23T20:00:00Z'},
+        {'id': 'old', 'kind': 'progress', 'at': '2026-01-01T00:00:00Z'},
+    ]
+    data = metrics(s, '2026-10-24T09:00:00Z')
+    assert data['trend'][-1] == {'day': '2026-10-24', 'count': 1}
+    assert data['trend'][-2] == {'day': '2026-10-23', 'count': 1}
+    assert data['heatmap'][-1]['hours'][1] == 2
+    assert data['heatmap'][-2]['hours'][23] == 1
+    assert sum(sum(day['hours']) for day in data['heatmap']) == 3
