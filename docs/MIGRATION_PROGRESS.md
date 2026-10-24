@@ -2,8 +2,8 @@
 
 Started and completed: 2026-10-24 (Africa/Addis_Ababa).
 
-Latest deployment: the Docker/PostgreSQL section below supersedes the original
-SQLite-only deployment limits recorded during the service separation.
+Latest deployment: Vercel production is live at https://watchtower-lyart.vercel.app.
+The final cloud verification below supersedes the original local-only deployment limits.
 
 Status: implementation and local validation complete; production cutover not performed.
 
@@ -198,3 +198,104 @@ catch-up/month-end EAT behavior, backup/import refusal, and read-only vault fall
   Temporary containers were removed afterwards; the existing Compose app remains
   running. Vercel-specific binding injection and cloud routing still need live
   verification after account/database setup.
+
+
+## Vercel account setup follow-up — 2026-10-24
+
+- The user's CLI created and linked the Vercel project successfully. A read-only
+  preflight confirmed the next blocker is missing Production database configuration;
+  no live application deployment was attempted in this follow-up.
+- Disabled optional CLI plugin prompts during scripted commands and added
+  `npm run deploy:vercel -- --preflight` to check cloud settings without publishing.
+- Missing required Production variables are now reported together, with guidance
+  that local dotenv files do not configure cloud deployment. Regression checks pass.
+
+
+## Vercel build-context repair — 2026-10-24
+
+- Cloud logs showed Vercel building the frontend from `frontend/`, while the initial
+  Dockerfiles expected repository-root files. Earlier local root-context builds
+  missed this mismatch.
+- Set explicit frontend/backend service roots and service-relative Dockerfile
+  entrypoints. Both Vercel Dockerfiles now copy only their service-local files.
+- Added a standalone frontend lockfile based on the workspace's pinned dependency
+  records and per-service Docker ignore rules to exclude credentials and databases.
+- Added regression checks that every Docker COPY input exists inside the staged
+  service context and that the frontend lockfile matches its manifest. Script
+  tests and upload checks passed. Rebuild using `npm run deploy:vercel` to send
+  the repaired source; retrying the old deployment keeps its old files.
+- Both images successfully rebuilt using their service directories as contexts.
+  The standalone frontend passed local startup, favicon, middleware redirect,
+  login/session, and authenticated task-page checks in a temporary container.
+
+
+## Guided production configuration — 2026-10-24
+
+- Missing Production settings now explicitly report that nothing was uploaded.
+- Added `npm run deploy:vercel -- --setup`: Vercel's interactive env commands prompt
+  for missing variables in the linked project, store database/password values as
+  Secrets, preserve existing settings, and continue to deployment after validation.
+- Hosted PostgreSQL remains required. The helper does not provision a database,
+  upload Docker credentials, or automatically replace cloud records. Local tests
+  and upload checks pass; guided cloud writes are left for the user's terminal.
+
+
+## Hosted PostgreSQL provisioned — 2026-10-24
+
+- At the user's request, checked the Vercel team's existing Neon resources, then
+  created `watchtower-db` on the explicitly free `free_v3` plan in `iad1`.
+  Neon Auth and Realtime were disabled because the app uses its own authentication.
+- Connected the database to the `watchtower` project's Production environment.
+  Vercel injected `DATABASE_URL`; a subsequent preflight confirms it is present.
+- No local data was imported and no production records were replaced. The remaining
+  deployment inputs are the dashboard password/hash and public HTTPS application
+  URL. The guided `--setup` command can collect those in the user's terminal.
+- Read the project's verified production domain and set `PUBLIC_APP_URL` to
+  `https://watchtower-lyart.vercel.app` as Production Config without overwriting
+  an existing value. Only the production dashboard sign-in credential remains
+  for the user to enter through `npm run deploy:vercel -- --setup`.
+
+
+## Deployment source-filter repair — 2026-10-24
+
+- Retrieved the failed cloud build log and identified missing `frontend/lib/data`
+  modules. Both the upload staging filter and the unanchored Vercel ignore rule
+  treated application source named `data` as a database directory.
+- Limited staging exclusions to repository `data` and `backend/data`; anchored the
+  corresponding Vercel ignore rules. Credentials and database files remain excluded.
+- Regression coverage checks all five frontend data modules survive staging and
+  verifies Vercel ignore behavior with gitignore semantics. Local tests pass.
+- Verification now builds the actual staged upload, rather than the repository
+  source tree, to exercise the same file set sent to Vercel.
+
+- Cloud deployment of the repaired upload completed, resolving compilation errors.
+  Live checks then exposed Neon's rejection of startup `options` containing
+  `lock_timeout`. Moved lock/statement timeout configuration to `SET LOCAL` inside
+  each transaction, compatible with Neon's transaction pooler.
+- Verified the hosted Neon connection and both transaction-local timeout values
+  using read-only queries. Backend regression suite passed (21 tests); cloud
+  redeployment and final live checks follow this pooler repair.
+
+- The pooler-compatible backend deployed successfully and `/health` returned 200.
+  The frontend's internal binding still failed, so cloud API ingress now routes
+  directly to FastAPI using Vercel service rewrites. Next.js uses the public app
+  origin for server-side calls; local Compose retains direct backend transport.
+- Added deployment-time runtime checks for database health, configured session
+  endpoints, and the sign-in page, with regression tests for unhealthy/protected
+  responses. Setup prompts now identify each requested variable explicitly.
+
+
+## Production deployment verified — 2026-10-24
+
+- Successfully deployed `dpl_q2jMqNX8YdASZ1oYj1cbm2kuJFjF` and aliased
+  `https://watchtower-lyart.vercel.app`.
+- The deploy script's runtime checks passed: `/health` reports database readiness,
+  `/api/session` reports configured authentication, and `/login` returns 200.
+- Verified unauthenticated overview redirects to sign-in, password login issues a
+  session cookie, the session authenticates, and overview/tasks/bots/projects/
+  monitoring all render with HTTP 200 over the public production domain.
+- Local checks passed: TypeScript, frontend rendering/origin tests, deployment
+  staging/runtime tests, 21 backend regression tests, and 3 real PostgreSQL contract
+  tests. The hosted Neon pooler was also tested with read-only queries.
+- Cloud storage is the newly provisioned Neon database. Existing Docker/SQLite
+  records were not imported or replaced as part of these deployment repairs.

@@ -2,20 +2,33 @@
 /** Deploy the two HTTP containers as one Vercel Services project. */
 import { cp, copyFile, lstat, mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parseEnv } from 'node:util';
+import { setTimeout as delay } from 'node:timers/promises';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const ignored = new Set(['.git', '.vercel', '.next', '.venv', 'node_modules', '__pycache__', '.pytest_cache', 'data', 'exports', '.secrets']);
+const ignored = new Set(['.git', '.vercel', '.next', '.venv', 'node_modules', '__pycache__', '.pytest_cache', 'exports', '.secrets']);
+const storageDirectories = new Set(['data', 'backend/data']);
 
 export function includeSource(path) {
   const name = basename(path);
-  return !ignored.has(name) && !name.startsWith('.env') && !/\.(sqlite3(?:-.*)?|tsbuildinfo|pyc)$/.test(name);
+  const sourcePath = relative(root, resolve(path)).split(sep).join('/');
+  return !storageDirectories.has(sourcePath) && !ignored.has(name) && !name.startsWith('.env') && !/\.(sqlite3(?:-.*)?|tsbuildinfo|pyc)$/.test(name);
+}
+
+export function missingProduction(values) {
+  const missing = [];
+  if (!values.DATABASE_URL?.trim()) missing.push('DATABASE_URL');
+  if (!values.DASHBOARD_PASSWORD_HASH?.trim() && !values.DASHBOARD_PASSWORD?.trim()) missing.push('DASHBOARD_PASSWORD');
+  if (!values.PUBLIC_APP_URL?.trim()) missing.push('PUBLIC_APP_URL');
+  return missing;
 }
 
 export function validateProduction(values) {
+  const missing = missingProduction(values).map(key => key === 'DASHBOARD_PASSWORD' ? 'DASHBOARD_PASSWORD_HASH (or DASHBOARD_PASSWORD)' : key);
+  if (missing.length) throw new Error(`Nothing uploaded: configure these Production variables in the linked Vercel project: ${missing.join(', ')}. Run npm run deploy:vercel -- --setup for guided setup, or configure them in Vercel. Local dotenv files are not uploaded.`);
   // Vercel returns this marker for configured, non-exportable production Secrets.
   // Check their presence without requiring operators to reveal the value locally.
   if (values.DATABASE_URL !== '[SENSITIVE]') {
@@ -39,7 +52,7 @@ export function validateProduction(values) {
   for (const [key, expected] of [['COOKIE_SECURE', '1'], ['WATCHTOWER_ENV_FILES', '0'], ['WATCHTOWER_SEED_FROM_SNAPSHOT', '0']]) {
     if (values[key] !== undefined && values[key] !== expected) throw new Error(`Set ${key}=${expected} in Vercel or remove it to use the container default.`);
   }
-  if (values.BACKEND_URL) throw new Error('Remove BACKEND_URL from Vercel project variables; the frontend service binding supplies it automatically.');
+  if (values.BACKEND_URL) throw new Error('Remove BACKEND_URL from Vercel project variables; Vercel API calls use PUBLIC_APP_URL.');
 }
 
 export async function stageSource(destination) {
@@ -55,8 +68,30 @@ export async function stageSource(destination) {
   await copyFile(join(root, 'tools/package.json'), join(destination, 'tools/package.json'));
 }
 
-function cli(args, cwd) {
-  const result = spawnSync(process.env.WATCHTOWER_VERCEL_BIN || 'vercel', args, { cwd, stdio: 'inherit', env: process.env });
+export async function verifyDeployment(publicUrl, { request = fetch, attempts = 3, pause = () => delay(2000) } = {}) {
+  let failure;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      for (const path of ['/health', '/api/session', '/login']) {
+        const response = await request(new URL(path, publicUrl), { redirect: 'manual', signal: AbortSignal.timeout(20000) });
+        if (response.status !== 200) throw new Error(`${path} returned HTTP ${response.status}`);
+        if (path === '/health' && (await response.json()).status !== 'ok') throw new Error('Backend health check did not report ok');
+        if (path === '/api/session' && !(await response.json()).configured) throw new Error('Backend sign-in password is not configured');
+      }
+      return;
+    } catch (error) {
+      failure = error;
+      if (attempt + 1 < attempts) await pause();
+    }
+  }
+  throw new Error(`Deployment was created, but runtime verification failed: ${failure.message}. Check Vercel runtime logs and Deployment Protection before using the app.`);
+}
+
+function cli(args, cwd, interactive = false) {
+  const env = { ...process.env };
+  if (interactive) delete env.CI;
+  else env.CI = '1';
+  const result = spawnSync(process.env.WATCHTOWER_VERCEL_BIN || 'vercel', args, { cwd, stdio: 'inherit', env });
   if (result.error?.code === 'ENOENT') throw new Error('Install the current Vercel CLI (npm install -g vercel), then run vercel login.');
   if (result.error) throw new Error('Unable to start the Vercel CLI.');
   if (result.status !== 0) throw new Error('Vercel command failed. Check the CLI output above; no local database was changed.');
@@ -69,16 +104,17 @@ async function exists(path) {
 async function main() {
   const args = process.argv.slice(2);
   if (args.includes('--help')) {
-    console.log('Usage: npm run deploy:vercel [-- --check]\nDeploys both HTTP containers using Vercel Services (beta). Requires a managed PostgreSQL database and Production variables configured in Vercel. --check validates the upload locally without contacting Vercel.');
+    console.log('Usage: npm run deploy:vercel [-- --check | --preflight | --setup]\nDeploys both HTTP containers using Vercel Services (beta). Requires managed PostgreSQL. --setup prompts for missing Production variables before deploying. --check validates the upload locally. --preflight checks cloud settings without deploying.');
     return;
   }
-  if (args.some(arg => arg !== '--check')) throw new Error('Unknown option; use --help.');
+  if (args.some(arg => !['--check', '--preflight', '--setup'].includes(arg))) throw new Error('Unknown option; use --help.');
+  if (args.includes('--setup') && !process.stdin.isTTY) throw new Error('Run --setup in your terminal so Vercel can prompt for Production settings.');
   const temporary = await mkdtemp(join(tmpdir(), 'watchtower-vercel-'));
   const staging = join(temporary, 'watchtower');
   try {
     await stageSource(staging);
     if (args.includes('--check')) {
-      console.log('Upload prepared: both Docker services, frontend binding, no dotenv files, local databases, or exports. No deployment made.');
+      console.log('Upload prepared: both Docker services, same-origin API routing, no dotenv files, local databases, or exports. No deployment made.');
       return;
     }
     const linkFile = join(root, '.vercel/watchtower/project.json');
@@ -95,11 +131,37 @@ async function main() {
     }
     // Read production settings privately. Never pass secret values as CLI arguments.
     const envPath = join(staging, '.vercel/production.env');
-    cli(['env', 'pull', envPath, '--environment=production', '--yes'], staging);
-    try { validateProduction(parseEnv(await readFile(envPath, 'utf8'))); }
-    finally { await rm(envPath, { force: true }); }
+    async function pullProduction() {
+      try {
+        cli(['env', 'pull', envPath, '--environment=production', '--yes'], staging);
+        return parseEnv(await readFile(envPath, 'utf8'));
+      } finally { await rm(envPath, { force: true }); }
+    }
+    let production = await pullProduction();
+    if (args.includes('--setup')) {
+      const missing = missingProduction(production);
+      if (missing.length) console.log('Enter the missing Production values when Vercel prompts. DATABASE_URL must come from hosted PostgreSQL, not Docker. PUBLIC_APP_URL is your HTTPS domain shown under Vercel Domains.');
+      for (const key of missing) {
+        const instructions = {
+          DATABASE_URL: 'enter the hosted PostgreSQL connection URL',
+          DASHBOARD_PASSWORD: 'choose the password you will use to sign in to the production dashboard',
+          PUBLIC_APP_URL: 'enter the HTTPS domain shown on the Vercel Domains page',
+        };
+        console.log(`Setting ${key}: ${instructions[key]}.`);
+        cli(['env', 'add', key, '--environment', 'production', '--type', key === 'PUBLIC_APP_URL' ? 'config' : 'secret'], staging, true);
+      }
+      if (missing.length) production = await pullProduction();
+    }
+    validateProduction(production);
+    if (args.includes('--preflight')) {
+      console.log('Project and Production settings checked. No deployment made.');
+      return;
+    }
     console.log('Required production variables present; readable values validated. Deploying both containers…');
     cli(['deploy', '--prod', '--yes'], staging);
+    console.log('Checking production database health, API proxy, and sign-in page…');
+    await verifyDeployment(production.PUBLIC_APP_URL);
+    console.log(`Runtime verified: ${production.PUBLIC_APP_URL}`);
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }

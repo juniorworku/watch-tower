@@ -69,3 +69,8 @@ class PostgresTests(unittest.TestCase):
             self.assertTrue(client.get("/api/session").json()["authenticated"])
             self.assertEqual(client.post("/api/tasks", json={"title": "PostgreSQL task"}).status_code, 201)
         self.assertEqual(len(self.repository.read()["tasks"]), 1)
+
+    def test_timeouts_are_applied_in_transaction_not_startup_options(self):
+        with self.repository.connect() as connection:
+            self.assertEqual(connection.execute("SHOW lock_timeout").fetchone()[0], "15s")
+            self.assertEqual(connection.execute("SHOW statement_timeout").fetchone()[0], "30s")

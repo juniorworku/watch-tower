@@ -158,10 +158,15 @@ npm run deploy:vercel
 ```
 
 This deploys both Next.js and FastAPI as Docker-based HTTP services in a single
-Vercel production project. `vercel.json` connects the frontend to the backend using
-an internal `BACKEND_URL` service binding. Browser and agent API requests use the
-frontend proxy; `/health` goes directly to FastAPI. The script prints Vercel's
-resulting deployment URL.
+Vercel production project. `vercel.json` routes `/api/*` and `/health` directly
+to FastAPI, and other paths to Next.js. Server rendering and middleware call the
+API on `PUBLIC_APP_URL`, keeping browser requests and cookies on one domain. The script prints Vercel's
+resulting deployment URL and checks `/health`, `/api/session`, and `/login` before
+reporting runtime verification as successful.
+Each Vercel Docker build uses its service folder as the context: `frontend/`
+contains its own lockfile, and `backend/` contains its own Python requirements.
+The Vercel Dockerfiles do not rely on files above those folders. Local Compose
+continues using the separate repository-root Docker build configuration.
 
 Vercel [Container Runtime](https://vercel.com/docs/functions/runtimes/container)
 and [Services](https://vercel.com/docs/services) are beta features. Vercel does not
@@ -192,7 +197,7 @@ and keep Compose for local development.
    | `CRON_SECRET` | Required if an external scheduler calls `/api/cron` |
 
    Add provider credentials only for integrations you intend to use. Do not set
-   `BACKEND_URL`; the service binding provides it. Container defaults set
+   `BACKEND_URL`; server-side API calls use `PUBLIC_APP_URL` on Vercel. Container defaults set
    `COOKIE_SECURE=1`, `WATCHTOWER_ENV_FILES=0`, and
    `WATCHTOWER_SEED_FROM_SNAPSHOT=0`.
 4. Run `npm run deploy:vercel`. For a different project/team, set
@@ -214,6 +219,33 @@ npm run deploy:vercel -- --check
 node --test tools/deploy-vercel.test.mjs
 ```
 
+If the project exists but deployment stops because Production settings are missing,
+run the guided setup in your terminal:
+
+```bash
+npm run deploy:vercel -- --setup
+```
+
+Vercel prompts for missing settings only, stores the database URL and dashboard
+password as Secrets, then the script deploys. You must obtain a hosted PostgreSQL
+URL first; it cannot use the local Compose database. Find your production domain
+under the project's **Domains** page for `PUBLIC_APP_URL`. Existing settings are
+kept. You can also enter these values directly in Vercel's Environment Variables
+page; choose Production as the target environment.
+
+Check the linked project's Production settings without publishing:
+
+```bash
+npm run deploy:vercel -- --preflight
+```
+
+If deployment reports missing variables, open the linked Vercel project's
+**Settings → Environment Variables**, add them for **Production**, and rerun the
+command. Editing local `.env` files does not configure Vercel. The `db:5432` address
+in local Docker configuration is not reachable from Vercel; use the URL from your
+managed PostgreSQL provider. The optional Codex plugin is not required to deploy;
+the script disables optional plugin prompts.
+
 Cloud PostgreSQL starts empty unless you explicitly import data. The script does
 not provision a paid database, copy your local records, replace cloud data, or
 upload your local passwords. To migrate records, use the existing export/import
@@ -223,7 +255,8 @@ Keep your Compose database and private backups until you verify the cloud app.
 Vercel project variables are shared by its services and remain server-side; never
 prefix backend credentials with `NEXT_PUBLIC_`. This deployment uses the Next.js
 container rather than a native Next.js service so middleware and server rendering
-run inside the same container with its runtime binding available. Container scale
+run inside the same container. The Vercel frontend image enables
+`WATCHTOWER_API_SAME_ORIGIN=1` to select the public API origin. Container scale
 and request limits apply; unattended agents and recurring workers still require
 an appropriate external runner/scheduler.
 

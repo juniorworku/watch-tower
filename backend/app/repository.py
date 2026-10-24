@@ -96,8 +96,11 @@ class PostgresRepository(Repository):
     @contextmanager
     def connect(self):
         import psycopg
-        with psycopg.connect(self.database_url, connect_timeout=10,
-                             options="-c lock_timeout=15000 -c statement_timeout=30000") as connection:
+        with psycopg.connect(self.database_url, connect_timeout=10) as connection:
+            # Transaction-pooling endpoints reject these as startup options.
+            # SET LOCAL keeps the limits scoped to the transaction on its server.
+            connection.execute("SET LOCAL lock_timeout = '15s'")
+            connection.execute("SET LOCAL statement_timeout = '30s'")
             yield connection
 
     def initialize(self):

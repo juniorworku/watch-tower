@@ -44,3 +44,16 @@ test('new operational pages render populated fixtures and real form controls wit
     assert.ok(!html.includes('credentialHash'));
   }
 });
+
+test('backend origin supports direct Compose calls and Vercel same-origin API routes', () => {
+  const code = ts.transpileModule(fs.readFileSync('lib/backend-url.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+  function origin(env) {
+    const exports = {};
+    new Function('exports', 'process', code)(exports, { env });
+    return exports.backendUrl();
+  }
+  assert.equal(origin({}), 'http://127.0.0.1:8000');
+  assert.equal(origin({ BACKEND_URL: 'http://backend:8000/' }), 'http://backend:8000');
+  assert.equal(origin({ WATCHTOWER_API_SAME_ORIGIN: '1', PUBLIC_APP_URL: 'https://app.example.com/' }), 'https://app.example.com');
+  assert.throws(() => origin({ WATCHTOWER_API_SAME_ORIGIN: '1' }), /PUBLIC_APP_URL/);
+});

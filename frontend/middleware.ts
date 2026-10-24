@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { statusPage } from "./lib/status-page";
+import { backendUrl } from "./lib/backend-url";
 
 /** UI navigation gate only; FastAPI independently authenticates every protected API. */
 export async function middleware(req: NextRequest) {
@@ -7,7 +8,7 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith("/api/") || pathname === "/login" || pathname === "/unavailable") return NextResponse.next();
   let state: { configured: boolean; authenticated: boolean };
   try {
-    const response = await fetch(`${(process.env.BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "")}/api/session`, {
+    const response = await fetch(`${backendUrl()}/api/session`, {
       headers: { Cookie: req.headers.get("cookie") || "" }, cache: "no-store", signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) throw new Error("Backend unavailable");

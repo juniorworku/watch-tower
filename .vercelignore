@@ -8,7 +8,7 @@
 **/.env*
 **/*.tsbuildinfo
 **/*.sqlite3*
-data
-backend/data
+/data/
+/backend/data/
 exports
 .secrets

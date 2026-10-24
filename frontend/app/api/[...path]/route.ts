@@ -1,10 +1,11 @@
 import { type NextRequest } from "next/server";
+import { backendUrl } from "@/lib/backend-url";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // HTTP transport only. FastAPI is the sole implementation and authentication layer.
 async function forward(request: NextRequest) {
-  const backend = (process.env.BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+  const backend = backendUrl();
   const headers = new Headers(request.headers);
   for (const name of ["host", "connection", "content-length", "transfer-encoding", "accept-encoding"]) headers.delete(name);
   try {

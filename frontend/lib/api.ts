@@ -1,12 +1,10 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { backendUrl } from "./backend-url";
+export { backendUrl } from "./backend-url";
 
-export function backendUrl() {
-  return (process.env.BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
-}
-
-/** Server components forward the user's session; backend credentials never enter Next.js. */
+/** Server components forward the user's session, not a shared administrator key. */
 export async function backendGet<T>(path: string): Promise<T> {
   let response: Response;
   try {

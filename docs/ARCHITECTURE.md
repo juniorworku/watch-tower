@@ -73,7 +73,9 @@ Docker uses PostgreSQL 17, selected by `DATABASE_URL`. The compatible version-1
 state is stored as a JSONB aggregate with a revision number. `SELECT ... FOR UPDATE`
 serializes state mutations; each operation commits atomically or rolls back on
 failure. Concurrent startup uses a transaction-level advisory lock for schema
-creation and seeding. Connection, lock, and statement waits are bounded. This is
+creation and seeding. Connection, lock, and statement waits are bounded. Lock and statement timeouts
+are set with `SET LOCAL` inside the transaction so pooled PostgreSQL endpoints
+do not need to accept custom startup parameters. This is
 not yet a normalized table-per-entity schema.
 Connection contexts follow Psycopg's documented [commit/rollback behavior](https://www.psycopg.org/psycopg3/docs/basic/transactions.html),
 and records use its [JSONB adapter](https://www.psycopg.org/psycopg3/docs/basic/adapt.html#json-adaptation).
@@ -95,8 +97,10 @@ backend-only. Frontend environment examples contain only BACKEND_URL. Root legac
 dotenv files are supported temporarily and were not edited. Docker excludes dotenv
 files from build contexts and injects the backend environment at runtime.
 
-The optional Vercel deployment uses two container services in one project and a
-frontend-to-backend `BACKEND_URL` binding. Vercel project variables are shared
+The optional Vercel deployment uses two container services in one project.
+`/api/*` and `/health` route directly to FastAPI. Next.js server rendering and
+middleware call the API through `PUBLIC_APP_URL` with same-origin routing enabled;
+local Compose continues to call FastAPI directly using `BACKEND_URL`. Vercel project variables are shared
 server-side across services, unlike Compose's separate service environments; they
 must never be exposed through `NEXT_PUBLIC_` names or client payloads. PostgreSQL
 is managed externally. See the README for setup and the deployment script.
