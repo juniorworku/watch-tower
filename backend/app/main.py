@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import sqlite3
 import psycopg
+from psycopg_pool import PoolTimeout, TooManyRequests
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -19,8 +20,11 @@ def create_app(settings=None, repository=None):
 
     @asynccontextmanager
     async def lifespan(app):
-        repository.initialize()
-        yield
+        try:
+            repository.initialize()
+            yield
+        finally:
+            repository.close()
 
     app = FastAPI(title="Watch Tower API", version="1.0.0", lifespan=lifespan)
     app.state.settings = settings
@@ -41,6 +45,8 @@ def create_app(settings=None, repository=None):
         return JSONResponse({"error": "Invalid template or request fields"}, status_code=422)
 
     @app.exception_handler(sqlite3.OperationalError)
+    @app.exception_handler(PoolTimeout)
+    @app.exception_handler(TooManyRequests)
     @app.exception_handler(psycopg.OperationalError)
     @app.exception_handler(psycopg.InterfaceError)
     async def storage_error(_request: Request, _error: Exception):

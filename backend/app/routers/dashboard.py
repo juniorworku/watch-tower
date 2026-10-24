@@ -3,7 +3,8 @@ import hashlib
 import json
 from pathlib import Path
 import secrets
-from fastapi import APIRouter, Body, Depends, Request
+from time import perf_counter
+from fastapi import APIRouter, Body, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from ..auth import dashboard
 from .. import admin
@@ -17,8 +18,13 @@ def repo(request):
     return request.app.state.repository
 
 @router.get("/state")
-def state(request: Request):
-    return dashboard_state(repo(request).read())
+def state(request: Request, response: Response):
+    started = perf_counter()
+    document = repo(request).read()
+    read_at = perf_counter()
+    result = dashboard_state(document)
+    response.headers["Server-Timing"] = f"db;dur={(read_at-started)*1000:.1f}, projection;dur={(perf_counter()-read_at)*1000:.1f}"
+    return result
 
 @router.get("/tasks")
 def tasks(request: Request):

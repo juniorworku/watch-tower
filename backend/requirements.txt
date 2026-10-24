@@ -5,3 +5,4 @@ python-dotenv>=1,<2
 PyYAML>=6,<7
 python-multipart>=0.0.20,<1
 psycopg[binary]>=3.3,<4
+psycopg_pool>=3.3,<4

@@ -29,6 +29,7 @@ class PostgresTests(unittest.TestCase):
         params["dbname"] = self.name
         self.url = make_conninfo(**params)
         self.repository = PostgresRepository(self.url)
+        self.addCleanup(self.repository.close)
         # Concurrent initializers must seed only once without DDL races.
         with ThreadPoolExecutor(max_workers=3) as pool:
             list(pool.map(lambda _: self.repository.initialize(), range(3)))
@@ -51,7 +52,11 @@ class PostgresTests(unittest.TestCase):
             raise DomainError("rollback")
         with self.assertRaises(DomainError):
             self.repository.mutate(fail)
-        self.assertEqual(PostgresRepository(self.url).read(), before)
+        other = PostgresRepository(self.url)
+        try:
+            self.assertEqual(other.read(), before)
+        finally:
+            other.close()
         with self.assertRaises(DomainError):
             self.repository.import_state(empty_state())
         document = empty_state()
@@ -74,3 +79,17 @@ class PostgresTests(unittest.TestCase):
         with self.repository.connect() as connection:
             self.assertEqual(connection.execute("SHOW lock_timeout").fetchone()[0], "15s")
             self.assertEqual(connection.execute("SHOW statement_timeout").fetchone()[0], "30s")
+
+    def test_reads_reuse_connections_and_shutdown(self):
+        # Separate pool avoids relying on ordering of the concurrent startup pool.
+        repository = PostgresRepository(self.url)
+        self.addCleanup(repository.close)
+        repository.read()
+        with repository.connect() as connection:
+            first = connection.info.backend_pid
+        repository.read()
+        with repository.connect() as connection:
+            self.assertEqual(connection.info.backend_pid, first)
+        self.assertEqual(repository.pool.get_stats()["connections_num"], 1)
+        repository.close()
+        self.assertTrue(repository.pool.closed)

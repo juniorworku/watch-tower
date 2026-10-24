@@ -317,3 +317,43 @@ catch-up/month-end EAT behavior, backup/import refusal, and read-only vault fall
 - The Python helper passed a read-only preflight against the linked Vercel project
   and its urllib runtime checks against the live production app. No deployment
   or cloud setting changes were made during this conversion.
+
+
+## Page navigation performance — 2026-10-24
+
+- Measured authenticated production page responses before changes: overview 1.144s,
+  tasks 1.136s (repeat 0.980s), agents 1.073s, monitoring 1.321s; `/api/state`
+  took 1.101s. These are HTTP timings from this machine, not browser paint timings.
+- Removed the blocking network session check from middleware. Cookie presence is
+  only a fast redirect hint; the server dashboard layout verifies the actual
+  session alongside page data, and every protected FastAPI endpoint continues to
+  authenticate each request. No shared authentication or dashboard-data cache.
+- Added a dashboard loading boundary so client navigation can show progress and
+  Next.js can prefetch the shared shell instead of leaving the previous view idle.
+- PostgreSQL now reuses a bounded pool (maximum four connections per process,
+  idle connections released after 60 seconds), checks connection health before
+  reuse, and closes the pool on application/CLI shutdown. Transaction timeouts,
+  rollback, and exclusive task claims are preserved with Neon-compatible SQL.
+- Verification: TypeScript; four frontend rendering/authentication tests; four
+  deployment-helper tests; 21 backend regression tests; four real PostgreSQL
+  tests, including connection reuse, concurrency, rollback and timeout behavior.
+- Exact Vercel service-local frontend Docker build passed. Local Compose was rebuilt
+  and all three services are healthy. Authenticated local Docker page responses:
+  overview 0.095s, tasks 0.046s, agents 0.035s, monitoring 0.055s; state API 0.034s.
+- First cloud deployment passed runtime/authentication checks, but repeated page
+  timings still varied around one second, so it is not evidence of a large cloud
+  speedup. Follow-up: pipeline SQL setup with reads to remove sequential round
+  trips; real PostgreSQL tests and read-only hosted Neon reads passed. Added
+  `/api/state` Server-Timing diagnostics for database/projection time, without
+  exposing queries or credentials.
+- Final production deployment `dpl_DREfHwJ5Dfn5DeaFmAhqButqKtfX` is READY at
+  `https://watchtower-lyart.vercel.app`; runtime health/sign-in checks passed.
+  Live state API database timings are 10.4–10.7ms and projection 0.2–0.3ms.
+  HTTP state samples: 0.546s, 0.567s, 1.017s. Full page responses remain variable
+  (usually around 0.5–1.2s, with a 2.276s task-page outlier); these measurements
+  do not establish a large overall cloud navigation speedup. Network/platform
+  routing remains material: requests from this test location route via bom1 to
+  iad1. Browser paint/interaction latency has not been measured.
+- Invalid-session `/tasks` redirects to `/login` (307); the state API rejects it
+  with 401. The local updated backend remains healthy; its state diagnostic read
+  was 2.3ms with a 0.4ms projection. No production records were modified by checks.

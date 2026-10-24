@@ -57,3 +57,38 @@ test('backend origin supports direct Compose calls and Vercel same-origin API ro
   assert.equal(origin({ WATCHTOWER_API_SAME_ORIGIN: '1', PUBLIC_APP_URL: 'https://app.example.com/' }), 'https://app.example.com');
   assert.throws(() => origin({ WATCHTOWER_API_SAME_ORIGIN: '1' }), /PUBLIC_APP_URL/);
 });
+
+test('navigation gate redirects missing cookies without a backend round trip', () => {
+  const code = ts.transpileModule(fs.readFileSync('middleware.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+  const exports = {};
+  new Function('exports', 'require', code)(exports, id => {
+    assert.equal(id, 'next/server');
+    return { NextResponse: { next: () => 'next', redirect: url => url.toString() } };
+  });
+  function request(path, cookie) {
+    const url = new URL(path, 'https://app.example.com');
+    return { url: url.href, nextUrl: url, cookies: { get: () => cookie ? { value: cookie } : undefined } };
+  }
+  assert.equal(exports.middleware(request('/tasks?bot=a')), 'https://app.example.com/login?next=%2Ftasks%3Fbot%3Da');
+  // Presence only: signature validation still happens in the server layout/API.
+  assert.equal(exports.middleware(request('/tasks', 'invalid')), 'next');
+  assert.equal(exports.middleware(request('/api/tasks')), 'next');
+  assert.equal(exports.middleware(request('/login')), 'next');
+});
+
+test('dashboard layout validates sessions even when a cookie is present', async () => {
+  const code = ts.transpileModule(fs.readFileSync('app/(dash)/layout.tsx', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+  for (const session of [{ configured: true, authenticated: false }, { configured: false, authenticated: false }, { configured: true, authenticated: true }]) {
+    const exports = {};
+    new Function('exports', 'require', code)(exports, id => {
+      if (id === '@/lib/api') return { backendGet: async path => { assert.equal(path, '/api/session'); return session; } };
+      if (id === 'next/navigation') return { redirect: path => { throw new Error(`redirect:${path}`); } };
+      if (id === 'next/link') return { default: () => null };
+      if (id === '@/components/nav') return { Nav: () => null };
+      return require(id);
+    });
+    if (!session.configured) await assert.rejects(exports.default({ children: null }), /redirect:\/locked/);
+    else if (!session.authenticated) await assert.rejects(exports.default({ children: null }), /redirect:\/login/);
+    else assert.ok(await exports.default({ children: null }));
+  }
+});

@@ -28,6 +28,9 @@ def validate_state(value):
 
 
 class Repository:
+    def close(self):
+        """SQLite connections are scoped to each operation."""
+
     def __init__(self, path: Path, seed=empty_state):
         self.path = Path(path)
         self.seed = seed
@@ -90,18 +93,29 @@ class Repository:
 
 class PostgresRepository(Repository):
     def __init__(self, database_url, seed=empty_state):
+        from psycopg_pool import ConnectionPool
         self.database_url = database_url
         self.seed = seed
+        # Small per-process pool; release idle connections so hosted DBs can sleep.
+        self.pool = ConnectionPool(database_url, open=False, min_size=0, max_size=4,
+                                   max_idle=60, timeout=10, max_waiting=32,
+                                   kwargs={"connect_timeout": 10, "prepare_threshold": None},
+                                   check=ConnectionPool.check_connection)
+
+    def close(self):
+        self.pool.close()
 
     @contextmanager
     def connect(self):
-        import psycopg
-        with psycopg.connect(self.database_url, connect_timeout=10) as connection:
-            # Transaction-pooling endpoints reject these as startup options.
-            # SET LOCAL keeps the limits scoped to the transaction on its server.
-            connection.execute("SET LOCAL lock_timeout = '15s'")
-            connection.execute("SET LOCAL statement_timeout = '30s'")
-            yield connection
+        self.pool.open()
+        with self.pool.connection() as connection:
+            # Pipeline BEGIN/settings/queries together rather than waiting for
+            # each setup round trip. Fetches synchronize before using results.
+            with connection.pipeline():
+                # Transaction-pooling endpoints reject startup timeout options.
+                connection.execute("SET LOCAL lock_timeout = '15s'")
+                connection.execute("SET LOCAL statement_timeout = '30s'")
+                yield connection
 
     def initialize(self):
         from psycopg.types.json import Jsonb

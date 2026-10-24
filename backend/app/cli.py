@@ -34,15 +34,18 @@ def main():
         print(f"Password hash written to {args.file}; keep this file private.")
         return
     repository = Repository(args.database, empty_state) if args.database else create_repository(Settings.from_env(), empty_state)
-    repository.initialize()
-    if args.command == "import-state":
-        counts = repository.import_state(json.loads(args.file.read_text()), replace=args.replace)
-        print("Imported records: " + ", ".join(f"{key}={count}" for key, count in counts.items()))
-    else:
-        args.file.parent.mkdir(parents=True, exist_ok=True)
-        with open(args.file, "x", opener=lambda path, flags: os.open(path, flags, 0o600)) as output:
-            json.dump(repository.read(), output, indent=2)
-        print(f"Exported state to {args.file}; contains private data and credential hashes.")
+    try:
+        repository.initialize()
+        if args.command == "import-state":
+            counts = repository.import_state(json.loads(args.file.read_text()), replace=args.replace)
+            print("Imported records: " + ", ".join(f"{key}={count}" for key, count in counts.items()))
+        else:
+            args.file.parent.mkdir(parents=True, exist_ok=True)
+            with open(args.file, "x", opener=lambda path, flags: os.open(path, flags, 0o600)) as output:
+                json.dump(repository.read(), output, indent=2)
+            print(f"Exported state to {args.file}; contains private data and credential hashes.")
+    finally:
+        repository.close()
 
 if __name__ == "__main__":
     main()
