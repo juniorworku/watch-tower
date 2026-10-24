@@ -15,6 +15,6 @@
     "dev:backend": "python3 -m uvicorn backend.app.main:app --reload --port 8000",
     "snapshot": "node backend/scripts/snapshot-vault.mjs",
     "automation": "node backend/runtime/run-automation.mjs",
-    "deploy:vercel": "node tools/deploy-vercel.mjs"
+    "deploy:vercel": ".venv/bin/python tools/deploy_vercel.py"
   }
 }

@@ -299,3 +299,21 @@ catch-up/month-end EAT behavior, backup/import refusal, and read-only vault fall
   tests. The hosted Neon pooler was also tested with read-only queries.
 - Cloud storage is the newly provisioned Neon database. Existing Docker/SQLite
   records were not imported or replaced as part of these deployment repairs.
+
+
+## Python deployment helper — 2026-10-24
+
+- Replaced the JavaScript deployment helper with `tools/deploy_vercel.py` and
+  updated `npm run deploy:vercel` to invoke the repository's Python virtualenv.
+- Preserved project linking, safe source staging, Production validation, interactive
+  setup, non-exportable Secret handling, preflight/check modes, runtime health
+  verification, and temporary-file cleanup. Uses the existing python-dotenv
+  dependency and Python's standard HTTP client; Vercel CLI still handles hosting.
+- Replaced the JavaScript tests with Python unittest coverage for staging/ignore
+  rules, service build contexts, settings, runtime retries, and private environment
+  cleanup before upload. All four tests and the npm upload-check shortcut pass.
+- README now shows both direct Python invocation and the existing npm shortcut.
+  No production redeployment is needed for this local deployment-tool conversion.
+- The Python helper passed a read-only preflight against the linked Vercel project
+  and its urllib runtime checks against the live production app. No deployment
+  or cloud setting changes were made during this conversion.

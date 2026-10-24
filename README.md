@@ -151,11 +151,21 @@ worker. The worker now lives at `backend/runtime/run-automation.mjs`.
 
 ## Deploy to Vercel in one command
 
-After the one-time account/database setup below, run:
+The deployment helper is Python. After the one-time account/database setup below,
+run it directly:
+
+```bash
+.venv/bin/python tools/deploy_vercel.py
+```
+
+The existing shortcut runs the same Python script:
 
 ```bash
 npm run deploy:vercel
 ```
+
+Both forms support `--check`, `--preflight`, and `--setup` (use `--` before flags
+when invoking npm).
 
 This deploys both Next.js and FastAPI as Docker-based HTTP services in a single
 Vercel production project. `vercel.json` routes `/api/*` and `/health` directly
@@ -175,9 +185,13 @@ and keep Compose for local development.
 
 ### One-time Vercel setup
 
-1. Install Node.js 22.12+ and the current CLI, then sign in:
+1. Install Python 3.12+, Node.js 22.12+, and the current Vercel CLI. Create the
+   Python environment if it does not exist, install the backend dependencies,
+   then sign in:
 
    ```bash
+   python3 -m venv .venv
+   .venv/bin/pip install -r backend/requirements.lock
    npm install -g vercel
    vercel login
    ```
@@ -216,7 +230,7 @@ Check the upload locally without logging in or deploying:
 
 ```bash
 npm run deploy:vercel -- --check
-node --test tools/deploy-vercel.test.mjs
+.venv/bin/python -m unittest tools.test_deploy_vercel -v
 ```
 
 If the project exists but deployment stops because Production settings are missing,
